@@ -22,7 +22,7 @@ export default function AppShell({
 
   return (
     <div
-      className={`app-shell ${
+      className={`app-shell shell-layout ${
         sidebarCollapsed ? "sidebar-collapsed" : ""
       }`}
     >
@@ -34,7 +34,6 @@ export default function AppShell({
         onMobileMenuClose={() => setMobileMenuOpen(false)}
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
-        selectedHouse={selectedHouse}
       />
 
       {mobileMenuOpen && (
@@ -46,7 +45,7 @@ export default function AppShell({
         />
       )}
 
-      <main className="app-main">
+      <main className="app-main shell-main">
         <Header
           title={activePageTitle}
           selectedHouse={selectedHouse}
@@ -55,7 +54,7 @@ export default function AppShell({
           onMobileMenuOpen={() => setMobileMenuOpen(true)}
         />
 
-        <div className="app-content-stage">
+        <div className="app-content-stage shell-content-stage">
           <div className="page-content">{children}</div>
         </div>
       </main>

@@ -378,48 +378,110 @@ export default function Header({
   return (
     <>
       <style>{`
-        /* Moderní responzivní horní lišta */
+        /* =========================================================
+           SPRÁVA DOMŮ – FINÁLNÍ HLAVIČKA
+           ========================================================= */
+
         .topbar {
           position: sticky;
           top: 0;
           z-index: 220;
-          min-height: 76px;
-          display: grid;
-          grid-template-columns: minmax(190px, auto) minmax(0, 1fr);
+          width: 100%;
+          min-height: 96px;
+          display: flex;
           align-items: center;
-          gap: 22px;
-          padding: 10px clamp(16px, 2.3vw, 34px);
-          border-bottom: 1px solid rgba(213, 226, 220, 0.92);
-          background: rgba(255, 255, 255, 0.94);
-          box-shadow: 0 8px 28px rgba(30, 63, 51, 0.055);
+          gap: 0;
+          padding: 0 20px;
+          border-bottom: 1px solid #dce8e2;
+          background: rgba(255,255,255,.97);
+          box-shadow: 0 1px 0 rgba(17,58,47,.03);
           backdrop-filter: blur(18px);
           -webkit-backdrop-filter: blur(18px);
+          overflow: visible;
         }
 
-        .topbar-left {
+        .topbar-section {
+          position: relative;
           min-width: 0;
           display: flex;
           align-items: center;
+        }
+
+        .topbar-section + .topbar-section {
+          margin-left: 14px;
+          padding-left: 14px;
+        }
+
+        .topbar-section + .topbar-section::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 16px;
+          bottom: 16px;
+          width: 1px;
+          background: #e3ebe7;
+        }
+
+        .topbar-brand-section {
+          flex: 0 1 405px;
           gap: 12px;
+        }
+
+        .topbar-search-section {
+          flex: 1 1 520px;
+          min-width: 280px;
+        }
+
+        .topbar-house-section {
+          flex: 0 0 350px;
+        }
+
+        .topbar-bell-section {
+          flex: 0 0 66px;
+        }
+
+        .topbar-profile-section {
+          flex: 0 0 285px;
+        }
+
+        .mobile-menu-button {
+          box-sizing: border-box;
+          width: 48px;
+          height: 48px;
+          flex: 0 0 48px;
+          display: grid;
+          place-items: center;
+          border: 1px solid #dce7e2;
+          border-radius: 15px;
+          background: #ffffff;
+          color: #52665d;
+          box-shadow: 0 3px 12px rgba(17,58,47,.035);
+        }
+
+        .mobile-menu-button:hover {
+          border-color: #bdd8cc;
+          color: #147b5d;
         }
 
         .topbar-page-identity {
           min-width: 0;
           display: flex;
           align-items: center;
-          gap: 11px;
+          gap: 13px;
         }
 
         .topbar-page-mark {
-          width: 38px;
-          height: 38px;
+          box-sizing: border-box;
+          width: 58px;
+          height: 58px;
+          flex: 0 0 58px;
           display: grid;
           place-items: center;
-          flex: 0 0 auto;
-          border: 1px solid #dce9e3;
-          border-radius: 12px;
-          background: linear-gradient(145deg, #f5fbf8, #eaf5f0);
-          color: #08775a;
+          border: 1px solid #d7e7df;
+          border-radius: 18px;
+          background: linear-gradient(145deg,#f7fbf9,#e8f4ee);
+          color: #147b5d;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
         }
 
         .topbar-title {
@@ -428,56 +490,54 @@ export default function Header({
 
         .topbar-eyebrow {
           display: block;
+          margin: 0 0 6px;
           overflow: hidden;
-          color: #16805f;
-          font-size: 9px;
-          font-weight: 850;
-          letter-spacing: 0.13em;
-          line-height: 1.25;
+          color: #147b5d;
+          font-size: 10px;
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: .16em;
           text-overflow: ellipsis;
           text-transform: uppercase;
           white-space: nowrap;
         }
 
         .topbar-title h1 {
-          max-width: 250px;
-          margin: 4px 0 0;
+          max-width: 260px;
+          margin: 0;
           overflow: hidden;
-          color: #15251f;
-          font-size: clamp(18px, 1.65vw, 24px);
-          font-weight: 820;
-          letter-spacing: -0.035em;
+          color: #15231e;
+          font-size: 25px;
+          font-weight: 850;
           line-height: 1.05;
+          letter-spacing: -.035em;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
-        .topbar-actions {
-          min-width: 0;
-          display: flex;
-          align-items: center;
-          justify-content: flex-end;
-          gap: 10px;
-        }
-
         .topbar-search {
-          min-width: 180px;
-          width: clamp(210px, 29vw, 390px);
-          height: 46px;
+          width: 100%;
+          min-width: 0;
+          height: 56px;
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 0 12px;
-          border: 1px solid #dce6e1;
-          border-radius: 15px;
-          background: #f8fbf9;
-          color: #7a8b84;
+          gap: 12px;
+          padding: 0 15px 0 18px;
+          border: 1px solid #dce7e2;
+          border-radius: 18px;
+          background: #fbfcfb;
+          color: #71827b;
+          box-shadow: 0 3px 14px rgba(17,58,47,.025);
+          transition:
+            border-color 160ms ease,
+            background 160ms ease,
+            box-shadow 160ms ease;
         }
 
         .topbar-search:focus-within {
-          border-color: rgba(17, 128, 92, 0.42);
-          background: #ffffff;
-          box-shadow: 0 0 0 4px rgba(17, 128, 92, 0.075);
+          border-color: #97c7b5;
+          background: #fff;
+          box-shadow: 0 0 0 4px rgba(24,116,86,.07);
         }
 
         .topbar-search input {
@@ -486,120 +546,266 @@ export default function Header({
           border: 0;
           outline: 0;
           background: transparent;
-          color: #20322b;
+          color: #20312b;
           font: inherit;
-          font-size: 12px;
+          font-size: 14px;
         }
 
         .topbar-search input::placeholder {
-          color: #98a59f;
+          color: #a0ada7;
         }
 
         .topbar-search kbd {
           flex: 0 0 auto;
-          padding: 3px 6px;
-          border: 1px solid #dce5e1;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 5px 8px;
+          border: 1px solid #dce6e1;
           border-bottom-width: 2px;
-          border-radius: 7px;
-          background: #ffffff;
-          color: #809089;
+          border-radius: 8px;
+          background: #fff;
+          color: #7f8f89;
           font-family: inherit;
-          font-size: 9px;
+          font-size: 10px;
           line-height: 1;
         }
 
-        .topbar-house-wrapper {
+        .topbar-house-wrapper,
+        .profile-menu-wrapper {
           position: relative;
+          width: 100%;
           min-width: 0;
-          flex: 0 1 250px;
         }
 
         .topbar-house-switch {
           width: 100%;
-          max-width: 250px;
-          height: 48px;
+          height: 58px;
           display: grid;
-          grid-template-columns: auto minmax(0, 1fr) auto;
+          grid-template-columns: 48px minmax(0,1fr) 18px;
           align-items: center;
-          gap: 9px;
-          padding: 6px 10px;
-          border: 1px solid #dce6e1;
-          border-radius: 15px;
-          background: #ffffff;
-          color: #24352e;
+          gap: 12px;
+          padding: 5px 12px 5px 7px;
+          border: 1px solid #dce7e2;
+          border-radius: 19px;
+          background: #fff;
+          color: #22332c;
           text-align: left;
-          box-shadow: 0 4px 14px rgba(27, 61, 49, 0.045);
+          box-shadow: 0 4px 16px rgba(17,58,47,.035);
+          transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease,
+            transform 160ms ease;
         }
 
         .topbar-house-switch:hover,
-        .topbar-house-switch.is-open {
-          border-color: rgba(15, 128, 91, 0.32);
-          box-shadow: 0 9px 24px rgba(24, 76, 57, 0.09);
+        .topbar-house-switch.is-open,
+        .profile-button:hover,
+        .profile-button.is-open,
+        .topbar-icon-button:hover {
+          border-color: #bdd8cc;
+          box-shadow: 0 8px 24px rgba(17,58,47,.075);
+          transform: translateY(-1px);
         }
 
         .topbar-house-icon {
-          width: 34px;
-          height: 34px;
+          box-sizing: border-box;
+          width: 48px;
+          height: 48px;
           display: grid;
           place-items: center;
-          border-radius: 11px;
-          background: #edf7f3;
-          color: #08795b;
+          border-radius: 14px;
+          background: #e8f5ef;
+          color: #16775a;
         }
 
         .topbar-house-copy {
           min-width: 0;
-          display: grid;
-          gap: 2px;
-        }
-
-        .topbar-house-copy small,
-        .topbar-house-copy strong {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          display: block;
         }
 
         .topbar-house-copy small {
-          color: #819087;
-          font-size: 8px;
-          font-weight: 750;
-          letter-spacing: 0.04em;
+          display: block;
+          margin: 0 0 4px;
+          overflow: hidden;
+          color: #778981;
+          font-size: 9px;
+          font-weight: 850;
+          line-height: 1;
+          letter-spacing: .12em;
+          text-overflow: ellipsis;
           text-transform: uppercase;
+          white-space: nowrap;
         }
 
         .topbar-house-copy strong {
-          color: #20312a;
-          font-size: 11px;
-          font-weight: 790;
+          display: block;
+          min-width: 0;
+          overflow: hidden;
+          color: #1f3029;
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.15;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .topbar-house-chevron,
         .profile-chevron {
           width: 16px;
           height: 16px;
-          color: #87968f;
+          color: #889791;
           transition: transform 180ms ease;
         }
 
-        .topbar-house-switch.is-open .topbar-house-chevron {
+        .topbar-house-switch.is-open .topbar-house-chevron,
+        .profile-button.is-open .profile-chevron {
           transform: rotate(180deg);
         }
 
-        .topbar-house-menu {
+        .topbar-icon-button {
+          position: relative;
+          box-sizing: border-box;
+          width: 56px;
+          height: 56px;
+          flex: 0 0 56px;
+          display: grid;
+          place-items: center;
+          border: 1px solid #dce7e2;
+          border-radius: 18px;
+          background: #fff;
+          color: #43564e;
+          box-shadow: 0 4px 16px rgba(17,58,47,.03);
+          transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease,
+            transform 160ms ease;
+        }
+
+
+        .mobile-menu-button > svg,
+        .topbar-page-mark > svg,
+        .topbar-house-icon > svg,
+        .topbar-icon-button > svg {
+          display: block;
+          margin: 0;
+          flex: 0 0 auto;
+          position: static;
+          transform: none;
+        }
+
+        .mobile-menu-button,
+        .topbar-page-mark,
+        .topbar-house-icon,
+        .topbar-icon-button {
+          line-height: 0;
+          text-align: center;
+        }
+
+        .profile-avatar {
+          line-height: 1;
+          text-align: center;
+        }
+
+        .notification-badge {
+          position: absolute;
+          top: -6px;
+          right: -5px;
+          min-width: 20px;
+          height: 20px;
+          display: grid;
+          place-items: center;
+          padding: 0 4px;
+          border: 2px solid #fff;
+          border-radius: 999px;
+          background: #ef4755;
+          color: #fff;
+          font-size: 8px;
+          font-weight: 900;
+        }
+
+        .profile-button {
+          width: 100%;
+          height: 58px;
+          display: grid;
+          grid-template-columns: 48px minmax(0,1fr) 18px;
+          align-items: center;
+          gap: 12px;
+          padding: 5px 12px 5px 7px;
+          border: 1px solid #dce7e2;
+          border-radius: 19px;
+          background: #fff;
+          color: #23342d;
+          text-align: left;
+          box-shadow: 0 4px 16px rgba(17,58,47,.03);
+          transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease,
+            transform 160ms ease;
+        }
+
+        .profile-avatar {
+          box-sizing: border-box;
+          width: 48px;
+          height: 48px;
+          display: grid;
+          place-items: center;
+          border-radius: 15px;
+          background: linear-gradient(145deg,#238362,#0e684e);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: .02em;
+        }
+
+        .profile-details {
+          min-width: 0;
+          display: block;
+        }
+
+        .profile-details strong {
+          display: block;
+          min-width: 0;
+          overflow: hidden;
+          color: #1d2e27;
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.15;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .profile-details small {
+          display: block;
+          margin-top: 4px;
+          overflow: hidden;
+          color: #7f8f88;
+          font-size: 9px;
+          font-weight: 750;
+          line-height: 1;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .topbar-house-menu,
+        .profile-menu {
           position: absolute;
           top: calc(100% + 10px);
           right: 0;
           z-index: 280;
-          width: min(320px, calc(100vw - 24px));
-          padding: 8px;
+          width: min(330px,calc(100vw - 24px));
+          overflow: hidden;
           border: 1px solid #dbe6e1;
-          border-radius: 19px;
-          background: rgba(255, 255, 255, 0.985);
+          border-radius: 20px;
+          background: rgba(255,255,255,.985);
           box-shadow:
-            0 26px 70px rgba(21, 56, 43, 0.19),
-            0 4px 12px rgba(21, 56, 43, 0.06);
+            0 26px 70px rgba(21,56,43,.19),
+            0 4px 12px rgba(21,56,43,.06);
           backdrop-filter: blur(20px);
+        }
+
+        .topbar-house-menu {
+          padding: 8px;
         }
 
         .topbar-house-menu-label {
@@ -607,28 +813,28 @@ export default function Header({
           color: #16805f;
           font-size: 8px;
           font-weight: 850;
-          letter-spacing: 0.12em;
+          letter-spacing: .12em;
           text-transform: uppercase;
         }
 
         .topbar-house-menu-current {
           display: grid;
-          grid-template-columns: auto minmax(0, 1fr) auto;
+          grid-template-columns: 38px minmax(0,1fr) auto;
           align-items: center;
           gap: 11px;
           padding: 12px;
           border: 1px solid #dcebe4;
           border-radius: 14px;
-          background: linear-gradient(145deg, #eff9f5, #f8fcfa);
+          background: linear-gradient(145deg,#eff9f5,#f8fcfa);
         }
 
         .topbar-house-menu-current-icon {
-          width: 37px;
-          height: 37px;
+          width: 38px;
+          height: 38px;
           display: grid;
           place-items: center;
           border-radius: 12px;
-          background: #ffffff;
+          background: #fff;
           color: #08795b;
         }
 
@@ -701,137 +907,6 @@ export default function Header({
           font-size: 9px;
         }
 
-        .topbar-icon-button {
-          position: relative;
-          width: 46px;
-          height: 46px;
-          display: grid;
-          place-items: center;
-          flex: 0 0 auto;
-          border: 1px solid #dce6e1;
-          border-radius: 14px;
-          background: #ffffff;
-          color: #5e7068;
-        }
-
-        .topbar-icon-button:hover {
-          background: #f1f8f5;
-          color: #08775a;
-        }
-
-        .notification-badge {
-          position: absolute;
-          top: -5px;
-          right: -4px;
-          min-width: 18px;
-          height: 18px;
-          display: grid;
-          place-items: center;
-          padding: 0 4px;
-          border: 2px solid #ffffff;
-          border-radius: 999px;
-          background: #e54858;
-          color: #ffffff;
-          font-size: 8px;
-          font-weight: 850;
-        }
-
-        .profile-button {
-          width: clamp(150px, 14.5vw, 218px);
-          height: 48px;
-          display: grid;
-          grid-template-columns: auto minmax(0, 1fr) auto;
-          align-items: center;
-          gap: 9px;
-          padding: 5px 9px 5px 6px;
-          border: 1px solid #dce6e1;
-          border-radius: 15px;
-          background: #ffffff;
-          color: #263830;
-          text-align: left;
-        }
-
-        .profile-avatar {
-          width: 36px;
-          height: 36px;
-          display: grid;
-          place-items: center;
-          border-radius: 11px;
-          background: linear-gradient(145deg, #1b9873, #08795c);
-          color: #ffffff;
-          font-size: 10px;
-          font-weight: 900;
-        }
-
-        .profile-details {
-          min-width: 0;
-          display: grid;
-          gap: 2px;
-        }
-
-        .profile-details strong,
-        .profile-details small {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .profile-details strong {
-          color: #21312b;
-          font-size: 11px;
-        }
-
-        .profile-details small {
-          color: #87958e;
-          font-size: 8px;
-        }
-
-        .mobile-menu-button {
-          width: 42px;
-          height: 42px;
-          display: none;
-          place-items: center;
-          border: 1px solid #dce6e1;
-          border-radius: 13px;
-          background: #ffffff;
-          color: #52665d;
-        }
-
-        .profile-menu-wrapper {
-          position: relative;
-          flex: 0 0 auto;
-        }
-
-        .profile-button.is-open {
-          border-color: rgba(21, 128, 94, 0.34);
-          background: #ffffff;
-          box-shadow: 0 10px 26px rgba(20, 47, 38, 0.1);
-        }
-
-        .profile-button.is-open .profile-chevron {
-          transform: rotate(180deg);
-        }
-
-        .profile-chevron {
-          transition: transform 180ms ease;
-        }
-
-        .profile-menu {
-          position: absolute;
-          top: calc(100% + 12px);
-          right: 0;
-          z-index: 260;
-          width: min(330px, calc(100vw - 28px));
-          overflow: hidden;
-          border: 1px solid #dce6e1;
-          border-radius: 21px;
-          background: rgba(255, 255, 255, 0.985);
-          box-shadow:
-            0 24px 70px rgba(19, 51, 40, 0.2),
-            0 3px 10px rgba(19, 51, 40, 0.06);
-          backdrop-filter: blur(20px);
-        }
-
         .profile-menu-head {
           display: grid;
           grid-template-columns: auto 1fr;
@@ -839,8 +914,8 @@ export default function Header({
           gap: 12px;
           padding: 16px;
           background:
-            radial-gradient(circle at 90% 0%, rgba(22, 142, 102, 0.12), transparent 35%),
-            linear-gradient(145deg, #eff9f5, #fbfdfc);
+            radial-gradient(circle at 90% 0%,rgba(22,142,102,.12),transparent 35%),
+            linear-gradient(145deg,#eff9f5,#fbfdfc);
           border-bottom: 1px solid #e1e9e5;
         }
 
@@ -850,11 +925,10 @@ export default function Header({
           display: grid;
           place-items: center;
           border-radius: 15px;
-          background: linear-gradient(145deg, #1b9873, #08795c);
-          color: #ffffff;
+          background: linear-gradient(145deg,#1b9873,#08795c);
+          color: #fff;
           font-size: 12px;
           font-weight: 900;
-          box-shadow: 0 9px 18px rgba(9, 117, 87, 0.2);
         }
 
         .profile-menu-copy {
@@ -886,7 +960,7 @@ export default function Header({
           color: #16805f;
           font-size: 9px;
           font-weight: 800;
-          letter-spacing: 0.06em;
+          letter-spacing: .06em;
           text-transform: uppercase;
         }
 
@@ -910,9 +984,6 @@ export default function Header({
           background: transparent;
           color: #2a3b34;
           text-align: left;
-          transition:
-            color 180ms ease,
-            background 180ms ease;
         }
 
         .profile-menu-item:hover {
@@ -959,6 +1030,7 @@ export default function Header({
           transform: rotate(-90deg);
         }
 
+        /* Dialogy profilu a hesla */
         .global-dialog-backdrop {
           position: fixed;
           inset: 0;
@@ -966,18 +1038,18 @@ export default function Header({
           display: grid;
           place-items: center;
           padding: 18px;
-          background: rgba(7, 24, 20, 0.58);
+          background: rgba(7,24,20,.58);
           backdrop-filter: blur(6px);
         }
 
         .global-dialog {
-          width: min(560px, 100%);
-          max-height: min(760px, calc(100vh - 36px));
+          width: min(560px,100%);
+          max-height: min(760px,calc(100vh - 36px));
           overflow: auto;
-          border: 1px solid rgba(220, 230, 225, 0.95);
+          border: 1px solid rgba(220,230,225,.95);
           border-radius: 25px;
-          background: #ffffff;
-          box-shadow: 0 30px 90px rgba(5, 30, 22, 0.3);
+          background: #fff;
+          box-shadow: 0 30px 90px rgba(5,30,22,.3);
         }
 
         .global-dialog-head {
@@ -990,19 +1062,15 @@ export default function Header({
           gap: 18px;
           padding: 22px 24px;
           border-bottom: 1px solid #e4ebe7;
-          background: rgba(255, 255, 255, 0.96);
+          background: rgba(255,255,255,.96);
           backdrop-filter: blur(16px);
-        }
-
-        .global-dialog-head-copy {
-          min-width: 0;
         }
 
         .global-dialog-head-copy span {
           color: #16805f;
           font-size: 9px;
           font-weight: 850;
-          letter-spacing: 0.12em;
+          letter-spacing: .12em;
           text-transform: uppercase;
         }
 
@@ -1010,7 +1078,7 @@ export default function Header({
           margin: 6px 0 0;
           color: #1e2e28;
           font-size: 21px;
-          letter-spacing: -0.03em;
+          letter-spacing: -.03em;
         }
 
         .global-dialog-close {
@@ -1023,11 +1091,6 @@ export default function Header({
           border-radius: 13px;
           background: #f7faf8;
           color: #5e6f68;
-        }
-
-        .global-dialog-close:hover {
-          background: #edf6f2;
-          color: #08775a;
         }
 
         .global-dialog-body {
@@ -1043,7 +1106,7 @@ export default function Header({
           padding: 15px;
           border: 1px solid #e2ebe6;
           border-radius: 17px;
-          background: linear-gradient(145deg, #f1faf6, #fbfdfc);
+          background: linear-gradient(145deg,#f1faf6,#fbfdfc);
         }
 
         .global-account-summary-avatar {
@@ -1052,8 +1115,8 @@ export default function Header({
           display: grid;
           place-items: center;
           border-radius: 15px;
-          background: linear-gradient(145deg, #1b9873, #08795c);
-          color: #ffffff;
+          background: linear-gradient(145deg,#1b9873,#08795c);
+          color: #fff;
           font-size: 12px;
           font-weight: 900;
         }
@@ -1101,18 +1164,15 @@ export default function Header({
           padding: 0 13px;
           border: 1px solid #d8e3de;
           border-radius: 13px;
-          background: #ffffff;
+          background: #fff;
           color: #25342e;
           font-size: 13px;
           outline: 0;
-          transition:
-            border-color 180ms ease,
-            box-shadow 180ms ease;
         }
 
         .global-form-field input:focus {
-          border-color: rgba(18, 128, 92, 0.48);
-          box-shadow: 0 0 0 4px rgba(18, 128, 92, 0.08);
+          border-color: rgba(18,128,92,.48);
+          box-shadow: 0 0 0 4px rgba(18,128,92,.08);
         }
 
         .global-form-help {
@@ -1165,73 +1225,121 @@ export default function Header({
 
         .global-button.secondary {
           border-color: #d9e3de;
-          background: #ffffff;
+          background: #fff;
           color: #4f6259;
         }
 
         .global-button.primary {
           border-color: #147456;
-          background: linear-gradient(145deg, #1b8d69, #126c50);
-          color: #ffffff;
-          box-shadow: 0 8px 18px rgba(18, 108, 80, 0.18);
+          background: linear-gradient(145deg,#1b8d69,#126c50);
+          color: #fff;
         }
 
-        @media (max-width: 1220px) {
-          .topbar {
-            gap: 14px;
-            padding-inline: 18px;
+        /* Škálování bez překrývání */
+        @media (max-width: 1700px) {
+          .topbar-brand-section { flex-basis: 340px; }
+          .topbar-house-section { flex-basis: 300px; }
+          .topbar-profile-section { flex-basis: 245px; }
+
+          .topbar-page-mark {
+            width: 50px;
+            height: 50px;
+            flex-basis: 50px;
           }
 
           .topbar-title h1 {
-            max-width: 190px;
+            max-width: 220px;
+            font-size: 22px;
+          }
+        }
+
+        @media (max-width: 1450px) {
+          .topbar {
+            padding-inline: 14px;
           }
 
-          .topbar-search {
-            width: clamp(180px, 22vw, 280px);
+          .topbar-section + .topbar-section {
+            margin-left: 10px;
+            padding-left: 10px;
           }
 
-          .topbar-house-wrapper {
+          .topbar-search-section {
+            flex-basis: 360px;
+            min-width: 220px;
+          }
+
+          .topbar-brand-section {
+            flex-basis: 290px;
+          }
+
+          .topbar-house-section {
+            flex-basis: 250px;
+          }
+
+          .topbar-profile-section {
             flex-basis: 210px;
           }
 
-          .topbar-house-switch {
-            max-width: 210px;
+          .topbar-title h1 {
+            max-width: 175px;
+            font-size: 20px;
           }
 
-          .profile-button {
-            width: 152px;
+          .topbar-eyebrow {
+            font-size: 8px;
           }
         }
 
-        @media (max-width: 1040px) {
-          .topbar-page-mark,
-          .topbar-eyebrow,
-          .topbar-search kbd {
+        @media (max-width: 1180px) {
+          .topbar-search-section {
             display: none;
           }
 
-          .topbar-title h1 {
-            max-width: 150px;
-            margin-top: 0;
-            font-size: 18px;
+          .topbar-brand-section {
+            flex: 1 1 auto;
           }
 
-          .topbar-search {
-            min-width: 44px;
-            width: min(230px, 23vw);
+          .topbar-house-section {
+            flex-basis: 240px;
           }
 
-          .topbar-house-wrapper {
+          .topbar-profile-section {
             flex-basis: 190px;
           }
+        }
 
-          .topbar-house-switch {
-            max-width: 190px;
+        @media (max-width: 900px) {
+          .topbar {
+            min-height: 76px;
+          }
+
+          .topbar-title {
+            display: none;
+          }
+
+          .topbar-page-mark {
+            width: 48px;
+            height: 48px;
+            flex-basis: 48px;
+          }
+
+          .topbar-brand-section {
+            flex: 0 0 auto;
+          }
+
+          .topbar-house-section {
+            flex: 1 1 auto;
+            min-width: 180px;
+          }
+
+          .topbar-profile-section {
+            flex: 0 0 58px;
           }
 
           .profile-button {
-            width: 48px;
-            grid-template-columns: 1fr;
+            width: 58px;
+            grid-template-columns: 48px;
+            justify-content: center;
             padding: 5px;
           }
 
@@ -1240,105 +1348,83 @@ export default function Header({
             display: none;
           }
 
-          .profile-avatar {
-            margin: auto;
+          .topbar-section + .topbar-section::before {
+            top: 12px;
+            bottom: 12px;
           }
         }
 
-        @media (max-width: 820px) {
+        @media (max-width: 640px) {
           .topbar {
-            min-height: 68px;
-            grid-template-columns: auto minmax(0, 1fr);
-            padding: 9px 12px;
+            min-height: 70px;
+            padding-inline: 9px;
+          }
+
+          .topbar-section + .topbar-section {
+            margin-left: 7px;
+            padding-left: 7px;
+          }
+
+          .topbar-page-mark {
+            display: none;
           }
 
           .mobile-menu-button {
-            display: grid;
-          }
-
-          .topbar-page-identity {
-            display: none;
-          }
-
-          .topbar-actions {
-            gap: 7px;
-          }
-
-          .topbar-search {
-            width: min(250px, 38vw);
+            width: 44px;
             height: 44px;
+            flex-basis: 44px;
           }
 
-          .topbar-house-wrapper {
-            flex: 0 1 190px;
+          .topbar-house-section {
+            min-width: 0;
           }
 
           .topbar-house-switch {
-            max-width: 190px;
-            height: 44px;
+            height: 50px;
+            grid-template-columns: 40px minmax(0,1fr) 16px;
+            gap: 8px;
+            padding: 5px 8px 5px 5px;
           }
 
           .topbar-house-icon {
-            width: 31px;
-            height: 31px;
+            width: 40px;
+            height: 40px;
           }
 
-          .topbar-icon-button,
+          .topbar-house-copy small {
+            display: none;
+          }
+
+          .topbar-house-copy strong {
+            font-size: 11px;
+          }
+
+          .topbar-bell-section {
+            flex-basis: 52px;
+          }
+
+          .topbar-icon-button {
+            width: 48px;
+            height: 48px;
+            flex-basis: 48px;
+          }
+
           .profile-button {
-            width: 44px;
-            height: 44px;
-          }
-        }
-
-        @media (max-width: 680px) {
-          .topbar {
-            display: flex;
-            align-items: center;
+            width: 50px;
+            height: 50px;
           }
 
-          .topbar-actions {
-            min-width: 0;
-            flex: 1;
+          .profile-avatar {
+            width: 40px;
+            height: 40px;
           }
 
-          .topbar-search {
-            min-width: 0;
-            flex: 1 1 auto;
-            width: auto;
-          }
-
-          .topbar-house-wrapper {
-            flex: 0 0 auto;
-          }
-
-          .topbar-house-switch {
-            width: 44px;
-            padding: 5px;
-            grid-template-columns: 1fr;
-          }
-
-          .topbar-house-copy,
-          .topbar-house-switch > .topbar-house-chevron {
-            display: none;
-          }
-
-          .topbar-house-icon {
-            margin: auto;
-          }
-
-          .topbar-house-menu {
-            position: fixed;
-            top: 66px;
-            right: 10px;
-            left: 10px;
-            width: auto;
-          }
-
+          .topbar-house-menu,
           .profile-menu {
             position: fixed;
-            top: 68px;
-            right: 10px;
-            left: 10px;
+            top: 76px;
+            right: 8px;
+            left: 8px;
             width: auto;
           }
 
@@ -1365,29 +1451,10 @@ export default function Header({
             width: 100%;
           }
         }
-
-        @media (max-width: 430px) {
-          .topbar {
-            gap: 7px;
-            padding-inline: 9px;
-          }
-
-          .topbar-search {
-            width: 44px;
-            flex: 0 0 44px;
-            justify-content: center;
-            padding: 0;
-          }
-
-          .topbar-search input,
-          .topbar-search kbd {
-            display: none;
-          }
-        }
       `}</style>
 
       <header className="topbar">
-        <div className="topbar-left">
+        <div className="topbar-section topbar-brand-section">
           <button
             type="button"
             className="mobile-menu-button"
@@ -1399,7 +1466,7 @@ export default function Header({
 
           <div className="topbar-page-identity">
             <span className="topbar-page-mark">
-              <Building2 size={18} />
+              <Building2 size={21} />
             </span>
 
             <div className="topbar-title">
@@ -1409,19 +1476,19 @@ export default function Header({
           </div>
         </div>
 
-        <div className="topbar-actions">
+        <div className="topbar-section topbar-search-section">
           <label className="topbar-search">
-            <Search size={18} />
-
+            <Search size={19} />
             <input
               type="search"
               placeholder="Hledat v aplikaci…"
               aria-label="Hledat v aplikaci"
             />
-
-            <kbd>Ctrl K</kbd>
+            <kbd>⌘ K</kbd>
           </label>
+        </div>
 
+        <div className="topbar-section topbar-house-section">
           <div className="topbar-house-wrapper" ref={houseMenuRef}>
             <button
               type="button"
@@ -1436,12 +1503,12 @@ export default function Header({
               aria-haspopup="menu"
             >
               <span className="topbar-house-icon">
-                <Building2 size={17} />
+                <Building2 size={19} />
               </span>
 
               <span className="topbar-house-copy">
                 <small>Vybraný dům</small>
-                <strong>{houseName}</strong>
+                <strong title={houseName}>{houseName}</strong>
               </span>
 
               <ChevronDown className="topbar-house-chevron" />
@@ -1460,7 +1527,7 @@ export default function Header({
 
                   <div>
                     <span>Aktuálně otevřený dům</span>
-                    <strong>{houseName}</strong>
+                    <strong title={houseName}>{houseName}</strong>
                   </div>
 
                   <Check size={17} />
@@ -1473,7 +1540,6 @@ export default function Header({
                   role="menuitem"
                 >
                   <Building2 size={17} />
-
                   <span>
                     <strong>Vybrat jiný dům</strong>
                     <small>Vrátit se do Správy domů</small>
@@ -1482,16 +1548,20 @@ export default function Header({
               </div>
             )}
           </div>
+        </div>
 
+        <div className="topbar-section topbar-bell-section">
           <button
             type="button"
             className="topbar-icon-button"
             aria-label="Otevřít notifikace"
           >
-            <Bell size={19} />
+            <Bell size={20} />
             <span className="notification-badge">0</span>
           </button>
+        </div>
 
+        <div className="topbar-section topbar-profile-section">
           <div className="profile-menu-wrapper" ref={profileMenuRef}>
             <button
               type="button"
@@ -1512,7 +1582,7 @@ export default function Header({
               </span>
 
               <span className="profile-details">
-                <strong>
+                <strong title={userDisplay.name}>
                   {profileLoading
                     ? "Načítám uživatele…"
                     : userDisplay.name}

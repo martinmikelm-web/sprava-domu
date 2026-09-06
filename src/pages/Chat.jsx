@@ -16,6 +16,8 @@ import {
   FileText,
   Image,
   ImagePlus,
+  Info,
+  KeyRound,
   LoaderCircle,
   LockKeyhole,
   MessageCircle,
@@ -69,6 +71,8 @@ const KEY_STORAGE_PREFIX = "chat_conversation_passphrase_";
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡", "🎉", "🔥"];
 const MESSAGE_PAGE_SIZE = 80;
 const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
+
+const AUTO_PASSPHRASE_PREFIX = "sprava-domu-chat-auto:";
 
 const EMPTY_NEW_CONVERSATION = {
   type: "private",
@@ -467,6 +471,12 @@ export default function Chat({
 
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [messageMenuId, setMessageMenuId] = useState("");
+  const [conversationMenuOpen, setConversationMenuOpen] =
+    useState(false);
+  const [conversationDetailsOpen, setConversationDetailsOpen] =
+    useState(false);
+  const [deletingConversation, setDeletingConversation] =
+    useState(false);
 
   const [encryptionDialogOpen, setEncryptionDialogOpen] =
     useState(false);
@@ -474,6 +484,13 @@ export default function Chat({
     useState("");
   const [conversationKey, setConversationKey] = useState(null);
   const [encryptionReady, setEncryptionReady] = useState(false);
+
+  const [encryptionRecoveryOpen, setEncryptionRecoveryOpen] =
+    useState(false);
+  const [recoveryPassphrase, setRecoveryPassphrase] = useState("");
+  const [recoveryPassphraseConfirm, setRecoveryPassphraseConfirm] =
+    useState("");
+  const [recoverySaving, setRecoverySaving] = useState(false);
 
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -499,6 +516,16 @@ export default function Chat({
       ) || null,
     [conversations, selectedConversationId]
   );
+
+  const canResetConversationEncryption =
+    Boolean(selectedConversation?.id) &&
+    (isAdministrator ||
+      selectedConversation?.created_by === currentUserId);
+
+  const canDeleteSelectedConversation =
+    Boolean(selectedConversation?.id) &&
+    (isAdministrator ||
+      selectedConversation?.created_by === currentUserId);
 
   const selectedOtherUser = useMemo(() => {
     if (!selectedConversation || selectedConversation.type !== "private") {
@@ -840,6 +867,26 @@ export default function Chat({
       return;
     }
 
+    if (conversation.encryption_password_required === false) {
+      try {
+        const automaticPassphrase =
+          `${AUTO_PASSPHRASE_PREFIX}${conversation.id}`;
+        const key = await deriveConversationKey(
+          automaticPassphrase,
+          conversation.encryption_salt
+        );
+
+        setConversationKey(key);
+        setEncryptionReady(true);
+        setEncryptionDialogOpen(false);
+        return;
+      } catch (error) {
+        console.error("Automatické odemknutí chatu selhalo:", error);
+        setPageError("Chat se nepodařilo automaticky odemknout.");
+        return;
+      }
+    }
+
     const stored = getStoredPassphrase(conversation.id);
 
     if (!stored) {
@@ -941,6 +988,138 @@ export default function Chat({
     }
   }
 
+  function openEncryptionRecovery() {
+    if (!selectedConversation?.id) return;
+
+    if (!canResetConversationEncryption) {
+      setPageError(
+        "Heslo šifrování může obnovit pouze zakladatel konverzace nebo administrátor."
+      );
+      return;
+    }
+
+    setRecoveryPassphrase("");
+    setRecoveryPassphraseConfirm("");
+    setPageError("");
+    setEncryptionRecoveryOpen(true);
+  }
+
+  async function resetConversationEncryption(event) {
+    event.preventDefault();
+
+    if (
+      !selectedConversation?.id ||
+      !canResetConversationEncryption ||
+      recoverySaving
+    ) {
+      return;
+    }
+
+    const nextPassphrase = recoveryPassphrase.trim();
+
+    if (nextPassphrase.length < 8) {
+      setPageError("Nové heslo musí mít alespoň 8 znaků.");
+      return;
+    }
+
+    if (nextPassphrase !== recoveryPassphraseConfirm.trim()) {
+      setPageError("Nová hesla se neshodují.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Obnovení hesla šifrování NENÍ možné bez ztráty staré historie. " +
+        "Původní zprávy jsou šifrované starým heslem, které server nezná. " +
+        "Pokračováním bude dosavadní historie této konverzace trvale odstraněna a chat dostane nové šifrovací heslo."
+    );
+
+    if (!confirmed) return;
+
+    setRecoverySaving(true);
+    setPageError("");
+
+    try {
+      const attachmentPaths = messages
+        .map((message) => message.attachment_path)
+        .filter(Boolean);
+
+      const newSaltBytes = crypto.getRandomValues(new Uint8Array(16));
+      const newSalt = bytesToBase64(newSaltBytes);
+
+      const { error: resetError } = await supabase.rpc(
+        "chat_reset_conversation_encryption",
+        {
+          p_conversation_id: selectedConversation.id,
+          p_new_salt: newSalt,
+        }
+      );
+
+      if (resetError) throw resetError;
+
+      // Databázová historie už je po úspěšném RPC odstraněná.
+      // Zkusíme uklidit také fyzické zašifrované soubory.
+      if (attachmentPaths.length) {
+        const { error: storageError } = await supabase.storage
+          .from(CHAT_BUCKET)
+          .remove(attachmentPaths);
+
+        if (storageError) {
+          console.warn(
+            "Staré zašifrované přílohy se nepodařilo kompletně odstranit:",
+            storageError
+          );
+        }
+      }
+
+      storePassphrase(selectedConversation.id, nextPassphrase);
+
+      const nextKey = await deriveConversationKey(
+        nextPassphrase,
+        newSalt
+      );
+
+      setConversationKey(nextKey);
+      setEncryptionReady(true);
+      setEncryptionPassphrase("");
+      setRecoveryPassphrase("");
+      setRecoveryPassphraseConfirm("");
+      setEncryptionRecoveryOpen(false);
+      setEncryptionDialogOpen(false);
+
+      setMessages([]);
+      setDecryptedMessages({});
+      setAttachmentUrls({});
+      setMessageReceipts({});
+      setReplyTo(null);
+      setMessageText("");
+
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === selectedConversation.id
+            ? {
+                ...conversation,
+                encryption_salt: newSalt,
+                last_message_preview: null,
+                last_message_at: new Date().toISOString(),
+              }
+            : conversation
+        )
+      );
+
+      await loadConversations();
+      await loadMessages(selectedConversation.id, { quiet: true });
+    } catch (error) {
+      console.error("Obnovení hesla šifrování selhalo:", error);
+
+      setPageError(
+        error?.message ||
+          "Heslo šifrování se nepodařilo obnovit."
+      );
+    } finally {
+      setRecoverySaving(false);
+    }
+  }
+
   async function createConversation(event) {
     event.preventDefault();
 
@@ -965,17 +1144,10 @@ export default function Chat({
 
     if (
       newConversation.type === "group" &&
-      participantIds.length < 3
+      participantIds.length < 2
     ) {
       setPageError(
-        "Pro skupinový chat vyberte alespoň dva další uživatele."
-      );
-      return;
-    }
-
-    if (!encryptionPassphrase.trim()) {
-      setPageError(
-        "Nastavte heslo konverzace. Bez něj nelze vytvořit šifrovaný chat."
+        "Pro skupinový chat vyberte alespoň jednoho dalšího uživatele."
       );
       return;
     }
@@ -1002,6 +1174,9 @@ export default function Chat({
             : null,
         created_by: currentUserId,
         encryption_salt: bytesToBase64(salt),
+        encryption_password_required: Boolean(
+          encryptionPassphrase.trim()
+        ),
         last_message_at: new Date().toISOString(),
       };
 
@@ -1029,10 +1204,21 @@ export default function Chat({
 
       if (membersError) throw membersError;
 
-      storePassphrase(
-        created.id,
-        encryptionPassphrase.trim()
-      );
+      if (encryptionPassphrase.trim()) {
+        storePassphrase(
+          created.id,
+          encryptionPassphrase.trim()
+        );
+      } else {
+        const automaticPassphrase =
+          `${AUTO_PASSPHRASE_PREFIX}${created.id}`;
+        const automaticKey = await deriveConversationKey(
+          automaticPassphrase,
+          created.encryption_salt
+        );
+        setConversationKey(automaticKey);
+        setEncryptionReady(true);
+      }
 
       setNewConversation(EMPTY_NEW_CONVERSATION);
       setEncryptionPassphrase("");
@@ -1048,6 +1234,84 @@ export default function Chat({
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  async function deleteSelectedConversation() {
+    if (
+      !selectedConversation?.id ||
+      !canDeleteSelectedConversation ||
+      deletingConversation
+    ) {
+      return;
+    }
+
+    const title = getConversationTitle(
+      selectedConversation,
+      currentUserId
+    );
+
+    const confirmed = window.confirm(
+      `Opravdu chcete trvale smazat chat „${title}“? ` +
+        "Budou odstraněny zprávy, reakce, potvrzení o doručení/přečtení, členství i samotná konverzace. Tuto akci nelze vrátit."
+    );
+
+    if (!confirmed) return;
+
+    setDeletingConversation(true);
+    setPageError("");
+
+    try {
+      const attachmentPaths = messages
+        .map((message) => message.attachment_path)
+        .filter(Boolean);
+
+      const { error } = await supabase.rpc(
+        "chat_delete_conversation",
+        {
+          p_conversation_id: selectedConversation.id,
+        }
+      );
+
+      if (error) throw error;
+
+      if (attachmentPaths.length) {
+        const { error: storageError } = await supabase.storage
+          .from(CHAT_BUCKET)
+          .remove(attachmentPaths);
+
+        if (storageError) {
+          console.warn(
+            "Některé soubory chatu se nepodařilo odstranit ze Storage:",
+            storageError
+          );
+        }
+      }
+
+      try {
+        sessionStorage.removeItem(
+          `${KEY_STORAGE_PREFIX}${selectedConversation.id}`
+        );
+      } catch {}
+
+      setConversationMenuOpen(false);
+      setConversationDetailsOpen(false);
+      setSelectedConversationId("");
+      setMessages([]);
+      setDecryptedMessages({});
+      setAttachmentUrls({});
+      setMessageReceipts({});
+      setConversationKey(null);
+      setEncryptionReady(false);
+
+      await loadConversations();
+    } catch (error) {
+      console.error("Smazání konverzace selhalo:", error);
+      setPageError(
+        error?.message || "Chat se nepodařilo smazat."
+      );
+    } finally {
+      setDeletingConversation(false);
     }
   }
 
@@ -2541,6 +2805,136 @@ export default function Chat({
             max-width: 250px;
           }
         }
+        .chat-head-actions {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .chat-conversation-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          z-index: 40;
+          min-width: 210px;
+          padding: 7px;
+          border: 1px solid #e3e8e6;
+          border-radius: 13px;
+          background: #fff;
+          box-shadow: 0 14px 34px rgba(15, 23, 42, 0.16);
+        }
+
+        .chat-conversation-menu button {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          padding: 10px 11px;
+          border: 0;
+          border-radius: 9px;
+          background: transparent;
+          color: #23312d;
+          font: inherit;
+          font-size: 11px;
+          font-weight: 750;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .chat-conversation-menu button:hover {
+          background: #f3f7f5;
+        }
+
+        .chat-conversation-menu button.danger {
+          color: #b42318;
+        }
+
+        .chat-conversation-menu button:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .chat-details-grid {
+          display: grid;
+          gap: 10px;
+        }
+
+        .chat-detail-row {
+          display: grid;
+          grid-template-columns: 120px minmax(0, 1fr);
+          gap: 12px;
+          padding: 10px 0;
+          border-bottom: 1px solid #edf1ef;
+          font-size: 11px;
+        }
+
+        .chat-detail-row > span:first-child {
+          color: #72807b;
+          font-weight: 750;
+        }
+
+        .chat-detail-members {
+          display: grid;
+          gap: 7px;
+          margin-top: 4px;
+        }
+
+        .chat-detail-member {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          padding: 8px;
+          border: 1px solid #e6ebe8;
+          border-radius: 11px;
+        }
+
+        .chat-forgot-encryption {
+          width: fit-content;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          margin: 2px 0 0;
+          padding: 6px 0;
+          border: 0;
+          background: transparent;
+          color: #0b7658;
+          font: inherit;
+          font-size: 10px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .chat-forgot-encryption:hover {
+          text-decoration: underline;
+        }
+
+        .chat-forgot-encryption:disabled {
+          cursor: not-allowed;
+          opacity: 0.5;
+          text-decoration: none;
+        }
+
+        .chat-recovery-card {
+          display: grid;
+          gap: 8px;
+          padding: 12px;
+          border: 1px solid #f0d4a7;
+          border-radius: 13px;
+          background: #fff9ec;
+          color: #81540b;
+          font-size: 10px;
+          line-height: 1.5;
+        }
+
+        .chat-recovery-card strong {
+          color: #6f4707;
+          font-size: 11px;
+        }
+
+        .chat-recovery-card p {
+          margin: 0;
+        }
+
       `}</style>
 
       <aside className="chat-sidebar">
@@ -2705,13 +3099,55 @@ export default function Chat({
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="chat-icon-button"
-                aria-label="Informace o konverzaci"
-              >
-                <MoreVertical size={18} />
-              </button>
+              <div className="chat-head-actions">
+                <button
+                  type="button"
+                  className="chat-icon-button"
+                  aria-label="Menu konverzace"
+                  onClick={() =>
+                    setConversationMenuOpen((current) => !current)
+                  }
+                >
+                  <MoreVertical size={18} />
+                </button>
+
+                {conversationMenuOpen && (
+                  <div className="chat-conversation-menu">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConversationMenuOpen(false);
+                        setConversationDetailsOpen(true);
+                      }}
+                    >
+                      <Info size={16} />
+                      Detaily chatu
+                    </button>
+
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={deleteSelectedConversation}
+                      disabled={
+                        !canDeleteSelectedConversation ||
+                        deletingConversation
+                      }
+                      title={
+                        canDeleteSelectedConversation
+                          ? "Trvale smazat chat"
+                          : "Chat může smazat pouze jeho zakladatel nebo administrátor."
+                      }
+                    >
+                      {deletingConversation ? (
+                        <LoaderCircle size={16} />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                      Smazat chat
+                    </button>
+                  </div>
+                )}
+              </div>
             </header>
 
             <div
@@ -2722,7 +3158,9 @@ export default function Chat({
               <LockKeyhole size={14} />
 
               {encryptionReady
-                ? "Zprávy a přílohy jsou šifrovány na vašem zařízení. Supabase ukládá pouze šifrovaná data."
+                ? selectedConversation.encryption_password_required === false
+                  ? "Zprávy a přílohy jsou šifrovány a chat se odemyká automaticky bez povinného hesla."
+                  : "Zprávy a přílohy jsou šifrovány na vašem zařízení. Supabase ukládá pouze šifrovaná data."
                 : "Konverzace je uzamčena. Pro čtení a odesílání zpráv zadejte heslo konverzace."}
             </div>
 
@@ -3261,8 +3699,9 @@ export default function Chat({
             <div className="chat-modal-body">
               <div className="chat-encryption-banner">
                 <LockKeyhole size={14} />
-                Heslo konverzace se neukládá do Supabase.
-                Bez něj nebude možné zprávy dešifrovat.
+                Heslo je volitelné. Když ho necháte prázdné,
+                chat se bude na všech zařízeních odemykat automaticky.
+                Pokud heslo nastavíte, nebude se ukládat do Supabase.
               </div>
 
               <div className="chat-field">
@@ -3306,7 +3745,7 @@ export default function Chat({
               )}
 
               <div className="chat-field">
-                <label>Heslo šifrování</label>
+                <label>Heslo šifrování (volitelné)</label>
                 <input
                   type="password"
                   value={encryptionPassphrase}
@@ -3316,7 +3755,7 @@ export default function Chat({
                     )
                   }
                   minLength={8}
-                  placeholder="Alespoň 8 znaků"
+                  placeholder="Volitelné – pokud chcete chat chránit heslem"
                   autoComplete="new-password"
                 />
               </div>
@@ -3418,6 +3857,136 @@ export default function Chat({
         </div>
       )}
 
+      {conversationDetailsOpen && selectedConversation && (
+        <div
+          className="chat-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setConversationDetailsOpen(false);
+            }
+          }}
+        >
+          <div className="chat-modal">
+            <header className="chat-modal-head">
+              <div>
+                <small>Konverzace</small>
+                <h2>Detaily chatu</h2>
+              </div>
+
+              <button
+                type="button"
+                className="chat-icon-button"
+                onClick={() => setConversationDetailsOpen(false)}
+                aria-label="Zavřít detaily"
+              >
+                <X size={17} />
+              </button>
+            </header>
+
+            <div className="chat-modal-body">
+              <div className="chat-details-grid">
+                <div className="chat-detail-row">
+                  <span>Název</span>
+                  <strong>
+                    {getConversationTitle(
+                      selectedConversation,
+                      currentUserId
+                    )}
+                  </strong>
+                </div>
+
+                <div className="chat-detail-row">
+                  <span>Typ</span>
+                  <span>
+                    {selectedConversation.type === "private"
+                      ? "Soukromý chat"
+                      : selectedConversation.type === "group"
+                      ? "Skupinový chat"
+                      : selectedConversation.type === "house"
+                      ? "Chat domu"
+                      : selectedConversation.type}
+                  </span>
+                </div>
+
+                <div className="chat-detail-row">
+                  <span>Šifrování</span>
+                  <span>
+                    {selectedConversation.encryption_password_required === false
+                      ? "Automatické – bez povinného hesla"
+                      : "Chráněné heslem"}
+                  </span>
+                </div>
+
+                <div className="chat-detail-row">
+                  <span>Vytvořeno</span>
+                  <span>
+                    {selectedConversation.created_at
+                      ? new Date(
+                          selectedConversation.created_at
+                        ).toLocaleString("cs-CZ")
+                      : "—"}
+                  </span>
+                </div>
+
+                <div className="chat-field">
+                  <label>
+                    Členové ({selectedConversation.members?.length || 0})
+                  </label>
+
+                  <div className="chat-detail-members">
+                    {(selectedConversation.members || []).map(
+                      (member) => (
+                        <div
+                          key={member.user_id}
+                          className="chat-detail-member"
+                        >
+                          <span className="chat-avatar">
+                            {member.profile?.avatar_url ? (
+                              <img
+                                src={member.profile.avatar_url}
+                                alt=""
+                              />
+                            ) : (
+                              getInitials(
+                                member.profile?.full_name,
+                                member.profile?.username
+                              )
+                            )}
+                          </span>
+
+                          <span>
+                            <strong>
+                              {member.profile?.full_name ||
+                                member.profile?.username ||
+                                "Uživatel"}
+                            </strong>
+                            <small>
+                              {member.role === "owner"
+                                ? "Zakladatel"
+                                : "Člen"}
+                            </small>
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="chat-modal-actions">
+                <button
+                  type="button"
+                  className="chat-button secondary"
+                  onClick={() => setConversationDetailsOpen(false)}
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {encryptionDialogOpen && selectedConversation && (
         <div className="chat-modal-backdrop">
           <form
@@ -3443,13 +4012,27 @@ export default function Chat({
                 <input
                   type="password"
                   value={encryptionPassphrase}
-                  onChange={(event) =>
-                    setEncryptionPassphrase(
-                      event.target.value
-                    )
-                  }
+                  onChange={(event) => {
+                    setEncryptionPassphrase(event.target.value);
+                    if (pageError) setPageError("");
+                  }}
                   autoFocus
                 />
+
+                <button
+                  type="button"
+                  className="chat-forgot-encryption"
+                  onClick={openEncryptionRecovery}
+                  disabled={!canResetConversationEncryption}
+                  title={
+                    canResetConversationEncryption
+                      ? "Obnovit heslo šifrování"
+                      : "Heslo může obnovit pouze zakladatel konverzace nebo administrátor."
+                  }
+                >
+                  <KeyRound size={14} />
+                  Zapomněli jste heslo?
+                </button>
               </div>
 
               <div className="chat-modal-actions">
@@ -3460,6 +4043,123 @@ export default function Chat({
                 >
                   <LockKeyhole size={16} />
                   Odemknout chat
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+
+      {encryptionRecoveryOpen && selectedConversation && (
+        <div className="chat-modal-backdrop">
+          <form
+            className="chat-modal"
+            onSubmit={resetConversationEncryption}
+          >
+            <header className="chat-modal-head">
+              <div>
+                <small>Obnova šifrování</small>
+                <h2>Zapomenuté heslo chatu</h2>
+              </div>
+
+              <button
+                type="button"
+                className="chat-icon-button"
+                onClick={() => {
+                  if (recoverySaving) return;
+                  setEncryptionRecoveryOpen(false);
+                  setRecoveryPassphrase("");
+                  setRecoveryPassphraseConfirm("");
+                  setPageError("");
+                }}
+                disabled={recoverySaving}
+                aria-label="Zavřít obnovu hesla"
+              >
+                <X size={17} />
+              </button>
+            </header>
+
+            <div className="chat-modal-body">
+              <div className="chat-recovery-card">
+                <strong>Staré heslo nelze zjistit ani obnovit.</strong>
+                <p>
+                  Heslo se neukládá do Supabase a z něj odvozený klíč
+                  existuje pouze v zařízení uživatele. Proto není
+                  technicky možné staré zprávy bez původního hesla
+                  dešifrovat.
+                </p>
+                <p>
+                  Nastavením nového hesla bude dosavadní historie
+                  této konverzace trvale odstraněna a chat začne
+                  znovu s novým šifrovacím klíčem.
+                </p>
+              </div>
+
+              <div className="chat-field">
+                <label>Nové heslo šifrování</label>
+                <input
+                  type="password"
+                  value={recoveryPassphrase}
+                  onChange={(event) => {
+                    setRecoveryPassphrase(event.target.value);
+                    if (pageError) setPageError("");
+                  }}
+                  minLength={8}
+                  placeholder="Alespoň 8 znaků"
+                  autoComplete="new-password"
+                  autoFocus
+                />
+              </div>
+
+              <div className="chat-field">
+                <label>Nové heslo znovu</label>
+                <input
+                  type="password"
+                  value={recoveryPassphraseConfirm}
+                  onChange={(event) => {
+                    setRecoveryPassphraseConfirm(event.target.value);
+                    if (pageError) setPageError("");
+                  }}
+                  minLength={8}
+                  placeholder="Zopakujte nové heslo"
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="chat-modal-actions">
+                <button
+                  type="button"
+                  className="chat-button secondary"
+                  onClick={() => {
+                    if (recoverySaving) return;
+                    setEncryptionRecoveryOpen(false);
+                    setRecoveryPassphrase("");
+                    setRecoveryPassphraseConfirm("");
+                    setPageError("");
+                  }}
+                  disabled={recoverySaving}
+                >
+                  Zrušit
+                </button>
+
+                <button
+                  type="submit"
+                  className="chat-button"
+                  disabled={
+                    recoverySaving ||
+                    recoveryPassphrase.trim().length < 8 ||
+                    recoveryPassphraseConfirm.trim().length < 8
+                  }
+                >
+                  {recoverySaving ? (
+                    <LoaderCircle size={16} />
+                  ) : (
+                    <KeyRound size={16} />
+                  )}
+                  {recoverySaving
+                    ? "Obnovuji šifrování…"
+                    : "Nastavit nové heslo"}
                 </button>
               </div>
             </div>

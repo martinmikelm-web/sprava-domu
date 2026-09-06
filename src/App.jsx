@@ -264,6 +264,33 @@ export default function App() {
         if (profileError) throw profileError;
         if (!isCurrentLoad()) return;
 
+        if (profile?.active === false) {
+          /*
+           * Neaktivní účet může mít technicky platnou Supabase session,
+           * ale do aplikace ho nepustíme.
+           *
+           * Příznak ukládáme do localStorage AŽ PO vyčištění aplikačního
+           * stavu, aby jej clearApplicationSession nemohl smazat.
+           * Login.jsx ho po návratu jednorázově přečte a zobrazí modal.
+           */
+          clearApplicationSession();
+
+          localStorage.setItem(
+            "sprava_domu_suspended_notice",
+            "1"
+          );
+
+          setCurrentProfile(null);
+          setApplicationPermissions(
+            createPermissionMap(PERMISSION_MODULE_KEYS)
+          );
+          setDataModeReady(false);
+          setPermissionsLoading(false);
+
+          await supabase.auth.signOut({ scope: "local" });
+          return;
+        }
+
         // profiles.role je jediný autoritativní zdroj produkční role.
         // profile_roles může obsahovat staré historické řádky a nesmí
         // proto uživateli omylem udělit administrátorský přístup.
@@ -785,30 +812,6 @@ export default function App() {
     applicationPermissions,
   ]);
 
-  async function handleLogout() {
-    try {
-      clearApplicationSession();
-      resetDataAccessMode();
-      clearDeveloperPreviewData({ preserveIdentity: false });
-      window.sessionStorage.removeItem(SANDBOX_SELECTED_HOUSE_KEY);
-      window.sessionStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
-      window.localStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error) {
-      console.error("Odhlášení selhalo:", error);
-    } finally {
-      currentAuthUserIdRef.current = null;
-      setSelectedHouseId("");
-      setSelectedHouse(null);
-      setCurrentProfile(null);
-      setApplicationPermissions(createPermissionMap(PERMISSION_MODULE_KEYS));
-      setActivePageKey(HOUSES_PAGE_KEY);
-      setDataModeReady(false);
-      setSession(null);
-    }
-  }
-
   function handlePageChange(pageKey) {
     if (!pageKey || pageKey === activePageKey) return;
 
@@ -1010,25 +1013,6 @@ export default function App() {
               Správce vám musí přiřadit přístup alespoň k jednomu domu
               a povolit minimálně jeden jeho modul.
             </p>
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                marginTop: "22px",
-                minHeight: "44px",
-                padding: "0 20px",
-                border: "1px solid rgba(248, 113, 113, 0.28)",
-                borderRadius: "13px",
-                background: "rgba(127, 29, 29, 0.22)",
-                color: "#fecaca",
-                font: "inherit",
-                fontSize: "13px",
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              Odhlásit se
-            </button>
           </div>
         </div>
       );

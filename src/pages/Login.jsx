@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
   Building2,
+  CheckCircle2,
   Eye,
   EyeOff,
-  House,
-  LoaderCircle,
+  KeyRound,
   LockKeyhole,
   Mail,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
@@ -17,16 +16,9 @@ import {
   configureLoginPersistence,
 } from "../lib/appSession";
 
-const WELCOME_DURATION = 15;
+const SUSPENDED_NOTICE_KEY = "sprava_domu_suspended_notice";
 
 export default function Login() {
-  const [screen, setScreen] = useState("welcome");
-  const [screenVisible, setScreenVisible] = useState(true);
-  const [secondsLeft, setSecondsLeft] = useState(WELCOME_DURATION);
-  const [initializationText, setInitializationText] = useState(
-    "Inicializace systému…"
-  );
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -34,90 +26,26 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
-
-  const progress =
-    ((WELCOME_DURATION - secondsLeft) / WELCOME_DURATION) * 100;
+  const [suspendedModalOpen, setSuspendedModalOpen] = useState(false);
 
   useEffect(() => {
-    if (screen !== "welcome") return undefined;
+    const suspendedNotice =
+      localStorage.getItem(SUSPENDED_NOTICE_KEY);
 
-    let active = true;
-
-    async function initializeApplication() {
-      setInitializationText("Ověřuji zabezpečené připojení…");
-
-      try {
-        await supabase.auth.getSession();
-
-        if (!active) return;
-
-        setInitializationText("Připravuji přihlašovací systém…");
-      } catch (error) {
-        console.error("Inicializace přihlášení selhala:", error);
-
-        if (!active) return;
-
-        setInitializationText("Připravuji přihlášení…");
-      }
+    if (suspendedNotice === "1") {
+      localStorage.removeItem(SUSPENDED_NOTICE_KEY);
+      setErrorMessage("");
+      setInfoMessage("");
+      setSuspendedModalOpen(true);
     }
+  }, []);
 
-    initializeApplication();
-
-    return () => {
-      active = false;
-    };
-  }, [screen]);
-
-  useEffect(() => {
-    if (screen !== "welcome") return undefined;
-
-    const countdownInterval = window.setInterval(() => {
-      setSecondsLeft((currentValue) => {
-        if (currentValue <= 1) {
-          window.clearInterval(countdownInterval);
-          return 0;
-        }
-
-        return currentValue - 1;
-      });
-    }, 1000);
-
-    return () => {
-      window.clearInterval(countdownInterval);
-    };
-  }, [screen]);
-
-  useEffect(() => {
-    if (screen === "welcome" && secondsLeft === 0) {
-      openLogin();
-    }
-  }, [secondsLeft, screen]);
-
-  function changeScreen(nextScreen) {
-    setScreenVisible(false);
-
-    window.setTimeout(() => {
-      setScreen(nextScreen);
-      setScreenVisible(true);
-    }, 260);
-  }
-
-  function openLogin() {
-    setErrorMessage("");
-    setInfoMessage("");
-    changeScreen("login");
-  }
-
-  function openWelcome() {
-    if (loading || forgotPasswordLoading) return;
-
-    setErrorMessage("");
-    setInfoMessage("");
-    setSecondsLeft(WELCOME_DURATION);
-    setInitializationText("Inicializace systému…");
-    changeScreen("welcome");
+  function clearMessages() {
+    if (errorMessage) setErrorMessage("");
+    if (infoMessage) setInfoMessage("");
   }
 
   async function handleSubmit(event) {
@@ -128,12 +56,12 @@ export default function Login() {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setErrorMessage("Zadej e-mailovou adresu.");
+      setErrorMessage("Zadejte e-mailovou adresu.");
       return;
     }
 
     if (!password) {
-      setErrorMessage("Zadej heslo.");
+      setErrorMessage("Zadejte heslo.");
       return;
     }
 
@@ -150,9 +78,14 @@ export default function Login() {
         password,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
+
+      /*
+       * Stav profiles.active se nekontroluje zde.
+       * Po vytvoření session jej autoritativně ověří App.jsx.
+       * Tím se vyhneme závodu mezi Login komponentou a auth listenerem
+       * a aktivní účet se přihlásí normálně.
+       */
     } catch (error) {
       clearApplicationState();
       localStorage.removeItem("sprava_domu_remember_login");
@@ -162,7 +95,14 @@ export default function Login() {
 
       const message = String(error?.message || "").toLowerCase();
 
-      if (message.includes("invalid login credentials")) {
+      if (
+        message.includes("profil je dočasně pozastaven") ||
+        message.includes("profil je docasne pozastaven")
+      ) {
+        setErrorMessage(
+          "Profil je dočasně pozastaven. Kontaktujte správce systému."
+        );
+      } else if (message.includes("invalid login credentials")) {
         setErrorMessage("Nesprávný e-mail nebo heslo.");
       } else if (message.includes("email not confirmed")) {
         setErrorMessage("E-mailová adresa zatím nebyla potvrzena.");
@@ -171,11 +111,11 @@ export default function Login() {
         message.includes("failed to fetch")
       ) {
         setErrorMessage(
-          "Nepodařilo se připojit k serveru. Zkontroluj internetové připojení."
+          "Nepodařilo se připojit k serveru. Zkontrolujte internetové připojení."
         );
       } else {
         setErrorMessage(
-          error?.message || "Přihlášení se nezdařilo. Zkus to znovu."
+          error?.message || "Přihlášení se nezdařilo. Zkuste to znovu."
         );
       }
     } finally {
@@ -193,7 +133,7 @@ export default function Login() {
 
     if (!normalizedEmail) {
       setErrorMessage(
-        "Nejprve vyplň e-mailovou adresu pro obnovení hesla."
+        "Nejprve vyplňte e-mailovou adresu pro obnovení hesla."
       );
       return;
     }
@@ -208,12 +148,10 @@ export default function Login() {
         }
       );
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setInfoMessage(
-        "Odkaz pro obnovení hesla byl odeslán na zadanou e-mailovou adresu."
+        "Odkaz pro obnovení hesla jsme odeslali na zadaný e-mail."
       );
     } catch (error) {
       console.error("Chyba při obnovení hesla:", error);
@@ -227,911 +165,935 @@ export default function Login() {
   }
 
   return (
-    <main className="login-page">
+    <main className="new-login-page">
       <style>{`
-        .login-page {
+        * {
           box-sizing: border-box;
+        }
+
+        .new-login-page {
+          --green-950: #0d3028;
+          --green-900: #123d32;
+          --green-800: #155442;
+          --green-700: #1b7558;
+          --green-600: #238b68;
+          --green-100: #e8f5ef;
+          --green-50: #f4faf7;
+          --text: #18231f;
+          --muted: #71827b;
+          --border: #dbe7e1;
+          --surface: #ffffff;
+
           width: 100%;
-          height: 100vh;
           min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 18px;
+          display: grid;
+          place-items: center;
+          padding: 28px;
           overflow: hidden;
           background:
             radial-gradient(
-              circle at 12% 12%,
-              rgba(20, 184, 166, 0.16),
-              transparent 32%
+              circle at 8% 8%,
+              rgba(47, 143, 109, 0.13),
+              transparent 28%
             ),
             radial-gradient(
-              circle at 88% 88%,
-              rgba(16, 185, 129, 0.1),
+              circle at 92% 90%,
+              rgba(18, 107, 80, 0.09),
+              transparent 30%
+            ),
+            #f4f8f6;
+          color: var(--text);
+          font-family:
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+        }
+
+        .new-login-shell {
+          width: min(1120px, 100%);
+          min-height: 680px;
+          display: grid;
+          grid-template-columns: minmax(0, 0.95fr) minmax(420px, 0.75fr);
+          overflow: hidden;
+          border: 1px solid rgba(205, 221, 214, 0.95);
+          border-radius: 34px;
+          background: rgba(255, 255, 255, 0.95);
+          box-shadow:
+            0 38px 100px rgba(18, 61, 50, 0.15),
+            0 1px 0 rgba(255, 255, 255, 0.95) inset;
+          backdrop-filter: blur(18px);
+        }
+
+        .new-login-visual {
+          position: relative;
+          min-height: 680px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          padding: 42px;
+          overflow: hidden;
+          background:
+            radial-gradient(
+              circle at 80% 20%,
+              rgba(92, 211, 164, 0.17),
               transparent 34%
             ),
-            #06111f;
-          color: #f8fafc;
+            linear-gradient(145deg, #0e382f 0%, #0b2b25 100%);
+          color: #ffffff;
         }
 
-        .login-card {
-          position: relative;
-          width: min(470px, 100%);
-          max-height: calc(100vh - 36px);
-          overflow: hidden;
-          border: 1px solid rgba(148, 163, 184, 0.15);
-          border-radius: 30px;
-          background: rgba(8, 20, 36, 0.96);
-          box-shadow:
-            0 35px 100px rgba(0, 0, 0, 0.42),
-            inset 0 1px 0 rgba(255, 255, 255, 0.035);
-          backdrop-filter: blur(22px);
-        }
-
-        .login-card::before {
+        .new-login-visual::before {
           content: "";
           position: absolute;
-          top: -170px;
-          right: -140px;
-          width: 330px;
-          height: 330px;
+          width: 390px;
+          height: 390px;
+          right: -150px;
+          top: 90px;
+          border: 1px solid rgba(255, 255, 255, 0.07);
           border-radius: 50%;
-          background: rgba(20, 184, 166, 0.11);
-          pointer-events: none;
         }
 
-        .login-card::after {
+        .new-login-visual::after {
           content: "";
           position: absolute;
-          bottom: -220px;
-          left: -180px;
-          width: 340px;
-          height: 340px;
+          width: 270px;
+          height: 270px;
+          right: -80px;
+          top: 150px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
           border-radius: 50%;
-          background: rgba(5, 150, 105, 0.08);
-          pointer-events: none;
         }
 
-        .login-screen {
+        .new-login-brand {
           position: relative;
-          z-index: 1;
-          display: flex;
-          flex-direction: column;
-          padding: 26px 34px;
-          opacity: 1;
-          transform: translateY(0);
-          transition:
-            opacity 0.26s ease,
-            transform 0.26s ease;
-        }
-
-        .login-screen.is-hidden {
-          opacity: 0;
-          transform: translateY(12px);
-        }
-
-        .login-brand {
+          z-index: 2;
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 13px;
-          text-align: left;
+          gap: 14px;
         }
 
-        .login-brand-logo {
-          width: 48px;
-          height: 48px;
+        .new-login-brand-logo {
+          width: 54px;
+          height: 54px;
+          flex: 0 0 54px;
           display: grid;
           place-items: center;
-          flex: 0 0 auto;
-          border: 1px solid rgba(94, 234, 212, 0.21);
-          border-radius: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.13);
+          border-radius: 17px;
           background: linear-gradient(
             145deg,
-            rgba(20, 184, 166, 0.3),
-            rgba(13, 148, 136, 0.14)
+            rgba(62, 174, 132, 0.33),
+            rgba(37, 124, 94, 0.2)
           );
-          color: #ccfbf1;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+          color: #d9f7ea;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
 
-        .login-brand-text strong {
+        .new-login-brand-copy strong {
           display: block;
-          color: #f8fafc;
           font-size: 18px;
-          line-height: 1.2;
+          font-weight: 820;
+          letter-spacing: -0.02em;
         }
 
-        .login-brand-text span {
+        .new-login-brand-copy span {
           display: block;
           margin-top: 4px;
-          color: #8293a8;
-          font-size: 12px;
-          line-height: 1.35;
+          color: #9fc3b5;
+          font-size: 11px;
         }
 
-        .welcome-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 30px 0 24px;
-          text-align: center;
+        .new-login-hero {
+          position: relative;
+          z-index: 2;
+          max-width: 520px;
+          margin: 45px 0;
         }
 
-        .welcome-icon {
-          width: 72px;
-          height: 72px;
-          display: grid;
-          place-items: center;
-          margin-bottom: 18px;
-          border: 1px solid rgba(52, 211, 153, 0.21);
-          border-radius: 26px;
-          background:
-            linear-gradient(
-              145deg,
-              rgba(16, 185, 129, 0.22),
-              rgba(15, 118, 110, 0.1)
-            );
-          color: #6ee7b7;
-          box-shadow:
-            0 18px 45px rgba(5, 150, 105, 0.14),
-            inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        }
-
-        .login-eyebrow {
+        .new-login-kicker {
           display: inline-flex;
           align-items: center;
-          gap: 7px;
-          min-height: 31px;
-          padding: 6px 12px;
-          border: 1px solid rgba(52, 211, 153, 0.14);
+          gap: 8px;
+          min-height: 34px;
+          padding: 7px 11px;
+          border: 1px solid rgba(126, 224, 186, 0.14);
           border-radius: 999px;
-          background: rgba(16, 185, 129, 0.09);
-          color: #6ee7b7;
-          font-size: 11px;
-          font-weight: 800;
+          background: rgba(74, 176, 136, 0.09);
+          color: #88dfbd;
+          font-size: 10px;
+          font-weight: 850;
           letter-spacing: 0.11em;
           text-transform: uppercase;
         }
 
-        .welcome-content h1 {
-          margin: 14px 0 10px;
-          color: #f8fafc;
-          font-size: clamp(38px, 7vw, 52px);
-          line-height: 1.02;
-          letter-spacing: -0.052em;
+        .new-login-hero h1 {
+          max-width: 480px;
+          margin: 20px 0 16px;
+          font-size: clamp(44px, 5vw, 64px);
+          line-height: 0.98;
+          letter-spacing: -0.055em;
         }
 
-        .welcome-content > p {
-          max-width: 370px;
+        .new-login-hero > p {
+          max-width: 480px;
           margin: 0;
-          color: #9aabba;
-          font-size: 14px;
+          color: #a9c5ba;
+          font-size: 15px;
           line-height: 1.7;
         }
 
-        .welcome-status {
-          width: 100%;
-          margin-top: 22px;
-          padding: 14px;
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-radius: 17px;
-          background: rgba(15, 23, 42, 0.43);
+        .new-login-features {
+          display: grid;
+          gap: 11px;
+          margin-top: 28px;
         }
 
-        .welcome-status-header {
+        .new-login-feature {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 14px;
-          margin-bottom: 12px;
-        }
-
-        .welcome-status-copy {
-          display: flex;
-          align-items: center;
-          min-width: 0;
-          gap: 9px;
-          color: #aab8c7;
+          gap: 11px;
+          color: #d8ebe4;
           font-size: 12px;
         }
 
-        .welcome-status-copy svg {
-          flex: 0 0 auto;
-          color: #34d399;
-          animation: login-spin 1.1s linear infinite;
-        }
-
-        .welcome-countdown {
-          flex: 0 0 auto;
-          color: #6ee7b7;
-          font-size: 12px;
-          font-weight: 800;
-        }
-
-        .welcome-progress-track {
-          height: 6px;
-          overflow: hidden;
-          border-radius: 999px;
-          background: rgba(148, 163, 184, 0.12);
-        }
-
-        .welcome-progress-bar {
-          height: 100%;
-          border-radius: inherit;
-          background: linear-gradient(90deg, #10b981, #2dd4bf);
-          box-shadow: 0 0 14px rgba(45, 212, 191, 0.35);
-          transition: width 1s linear;
-        }
-
-        .primary-button {
-          width: 100%;
-          min-height: 50px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          padding: 0 20px;
-          border: 0;
-          border-radius: 17px;
-          background: linear-gradient(135deg, #10b981, #059669);
-          color: #fff;
-          font: inherit;
-          font-size: 14px;
-          font-weight: 800;
-          cursor: pointer;
-          box-shadow: 0 16px 38px rgba(5, 150, 105, 0.24);
-          transition:
-            transform 0.2s ease,
-            box-shadow 0.2s ease,
-            opacity 0.2s ease;
-        }
-
-        .primary-button:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 20px 44px rgba(5, 150, 105, 0.32);
-        }
-
-        .primary-button:disabled {
-          cursor: wait;
-          opacity: 0.65;
-        }
-
-        .welcome-footer {
-          margin: 12px 0 0;
-          color: #5f7186;
-          text-align: center;
-          font-size: 11px;
-          line-height: 1.5;
-        }
-
-        .login-form-screen {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .login-back-button {
-          width: fit-content;
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          margin-bottom: 18px;
-          padding: 0;
-          border: 0;
-          background: transparent;
-          color: #8191a5;
-          font: inherit;
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: color 0.2s ease;
-        }
-
-        .login-back-button:hover:not(:disabled) {
-          color: #e2e8f0;
-        }
-
-        .login-form-heading {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          margin-bottom: 18px;
-          text-align: center;
-        }
-
-        .login-heading-icon {
-          width: 52px;
-          height: 52px;
+        .new-login-feature span:first-child {
+          width: 30px;
+          height: 30px;
+          flex: 0 0 30px;
           display: grid;
           place-items: center;
-          margin-bottom: 10px;
-          border: 1px solid rgba(52, 211, 153, 0.17);
-          border-radius: 20px;
-          background: rgba(16, 185, 129, 0.1);
-          color: #6ee7b7;
+          border-radius: 10px;
+          background: rgba(82, 181, 143, 0.1);
+          color: #77d7b2;
         }
 
-        .login-form-heading span {
-          color: #34d399;
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.11em;
+        .new-login-visual-footer {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #6f9e8d;
+          font-size: 10px;
+        }
+
+        .new-login-panel {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 48px 46px;
+          background: rgba(255, 255, 255, 0.98);
+        }
+
+        .new-login-form-wrap {
+          width: min(390px, 100%);
+        }
+
+        .new-login-form-head {
+          margin-bottom: 28px;
+        }
+
+        .new-login-form-icon {
+          width: 50px;
+          height: 50px;
+          display: grid;
+          place-items: center;
+          margin-bottom: 20px;
+          border: 1px solid #d7e8df;
+          border-radius: 16px;
+          background: linear-gradient(145deg, #f4faf7, #e7f4ee);
+          color: var(--green-700);
+        }
+
+        .new-login-form-head span {
+          display: block;
+          margin-bottom: 7px;
+          color: var(--green-700);
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: 0.13em;
           text-transform: uppercase;
         }
 
-        .login-form-heading h1 {
-          margin: 5px 0 0;
-          color: #f8fafc;
-          font-size: 30px;
-          line-height: 1.1;
+        .new-login-form-head h2 {
+          margin: 0;
+          color: var(--text);
+          font-size: 32px;
+          line-height: 1.05;
           letter-spacing: -0.04em;
         }
 
-        .login-form-heading p {
-          max-width: 345px;
-          margin: 6px 0 0;
-          color: #8495a9;
+        .new-login-form-head p {
+          margin: 10px 0 0;
+          color: var(--muted);
           font-size: 13px;
-          line-height: 1.6;
+          line-height: 1.65;
         }
 
-        .login-form {
+        .new-login-form {
           display: grid;
-          gap: 12px;
+          gap: 16px;
         }
 
-        .login-field {
+        .new-login-field {
           display: grid;
-          gap: 6px;
+          gap: 7px;
         }
 
-        .login-field label {
-          color: #bdc9d7;
-          font-size: 12px;
-          font-weight: 700;
+        .new-login-field label {
+          color: #33453e;
+          font-size: 11px;
+          font-weight: 800;
         }
 
-        .login-input-wrap {
-          min-height: 50px;
+        .new-login-input {
+          min-height: 54px;
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 0 16px;
-          border: 1px solid rgba(148, 163, 184, 0.15);
+          padding: 0 14px;
+          border: 1px solid var(--border);
           border-radius: 16px;
-          background: rgba(15, 23, 42, 0.68);
+          background: #fbfcfb;
+          color: #75867f;
           transition:
-            border-color 0.2s ease,
-            background 0.2s ease,
-            box-shadow 0.2s ease;
+            border-color 160ms ease,
+            background 160ms ease,
+            box-shadow 160ms ease;
         }
 
-        .login-input-wrap:focus-within {
-          border-color: rgba(52, 211, 153, 0.57);
-          background: rgba(15, 23, 42, 0.96);
-          box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.09);
+        .new-login-input:focus-within {
+          border-color: #92c7b3;
+          background: #ffffff;
+          box-shadow: 0 0 0 4px rgba(31, 126, 92, 0.07);
         }
 
-        .login-input-icon {
-          flex: 0 0 auto;
-          color: #64748b;
-        }
-
-        .login-input-wrap input {
-          width: 100%;
+        .new-login-input input {
           min-width: 0;
+          flex: 1;
           border: 0;
           outline: 0;
           background: transparent;
-          color: #f8fafc;
+          color: #1f3029;
           font: inherit;
           font-size: 14px;
         }
 
-        .login-input-wrap input::placeholder {
-          color: #475569;
+        .new-login-input input::placeholder {
+          color: #a2aea9;
         }
 
-        .login-password-toggle {
-          width: 35px;
-          height: 35px;
+        .new-login-input > svg {
+          flex: 0 0 auto;
+        }
+
+        .new-login-password-toggle {
+          width: 36px;
+          height: 36px;
           display: grid;
           place-items: center;
-          flex: 0 0 auto;
+          flex: 0 0 36px;
           padding: 0;
           border: 0;
-          border-radius: 10px;
+          border-radius: 11px;
           background: transparent;
-          color: #64748b;
+          color: #81928b;
           cursor: pointer;
-          transition:
-            color 0.2s ease,
-            background 0.2s ease;
         }
 
-        .login-password-toggle:hover:not(:disabled) {
-          background: rgba(148, 163, 184, 0.09);
-          color: #e2e8f0;
+        .new-login-password-toggle:hover:not(:disabled) {
+          background: #eef6f2;
+          color: var(--green-700);
         }
 
-        .login-remember-row {
+        .new-login-options {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 15px;
+          gap: 12px;
+          margin-top: -2px;
         }
 
-        .login-checkbox {
+        .new-login-checkbox {
           display: inline-flex;
           align-items: center;
-          gap: 9px;
-          color: #8495a9;
-          font-size: 12px;
+          gap: 8px;
+          color: #71827b;
+          font-size: 11px;
           cursor: pointer;
           user-select: none;
         }
 
-        .login-checkbox input {
+        .new-login-checkbox input {
           width: 16px;
           height: 16px;
-          accent-color: #10b981;
+          accent-color: var(--green-700);
         }
 
-        .login-message {
-          margin: 0;
-          padding: 12px 14px;
-          border-radius: 13px;
-          font-size: 12px;
-          line-height: 1.5;
-        }
-
-        .login-error {
-          border: 1px solid rgba(248, 113, 113, 0.21);
-          background: rgba(127, 29, 29, 0.2);
-          color: #fecaca;
-        }
-
-        .login-info {
-          border: 1px solid rgba(52, 211, 153, 0.18);
-          background: rgba(6, 78, 59, 0.23);
-          color: #a7f3d0;
-        }
-
-        .login-spinner {
-          width: 18px;
-          height: 18px;
-          border: 2px solid rgba(255, 255, 255, 0.28);
-          border-top-color: #fff;
-          border-radius: 50%;
-          animation: login-spin 0.8s linear infinite;
-        }
-
-        .forgot-password-button {
-          width: fit-content;
-          margin: 0 auto;
-          padding: 2px 0;
+        .new-login-forgot {
+          padding: 0;
           border: 0;
           background: transparent;
-          color: #6ee7b7;
+          color: var(--green-700);
           font: inherit;
-          font-size: 12px;
-          font-weight: 700;
+          font-size: 11px;
+          font-weight: 800;
           cursor: pointer;
         }
 
-        .forgot-password-button:hover:not(:disabled) {
+        .new-login-forgot:hover:not(:disabled) {
           text-decoration: underline;
         }
 
-        .login-security-note {
-          display: flex;
-          align-items: flex-start;
-          justify-content: center;
-          gap: 9px;
-          margin: 12px 0 0;
-          padding-top: 12px;
-          border-top: 1px solid rgba(148, 163, 184, 0.09);
-          color: #5f7186;
-          text-align: left;
+        .new-login-message {
+          margin: 0;
+          padding: 11px 12px;
+          border-radius: 12px;
           font-size: 11px;
           line-height: 1.5;
         }
 
-        .login-security-note svg {
-          flex: 0 0 auto;
-          margin-top: 1px;
+        .new-login-message.error {
+          border: 1px solid #f1cfd4;
+          background: #fff2f3;
+          color: #a62f3d;
         }
 
-        @keyframes login-spin {
+        .new-login-message.info {
+          border: 1px solid #cce8dc;
+          background: #eef9f4;
+          color: #176b4e;
+        }
+
+        .new-login-submit {
+          width: 100%;
+          min-height: 54px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          padding: 0 18px;
+          border: 1px solid #176a50;
+          border-radius: 16px;
+          background: linear-gradient(145deg, #238561, #14694e);
+          color: #ffffff;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 850;
+          cursor: pointer;
+          box-shadow: 0 12px 28px rgba(20, 105, 78, 0.19);
+          transition:
+            transform 160ms ease,
+            box-shadow 160ms ease,
+            opacity 160ms ease;
+        }
+
+        .new-login-submit:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 16px 34px rgba(20, 105, 78, 0.24);
+        }
+
+        .new-login-submit:disabled,
+        .new-login-forgot:disabled,
+        .new-login-password-toggle:disabled {
+          cursor: wait;
+          opacity: 0.65;
+        }
+
+        .new-login-spinner {
+          width: 17px;
+          height: 17px;
+          border: 2px solid rgba(255, 255, 255, 0.28);
+          border-top-color: #ffffff;
+          border-radius: 50%;
+          animation: new-login-spin 0.8s linear infinite;
+        }
+
+        .new-login-security {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          margin: 22px 0 0;
+          padding-top: 18px;
+          border-top: 1px solid #e7eeea;
+          color: #8a9993;
+          text-align: center;
+          font-size: 10px;
+          line-height: 1.5;
+        }
+
+        .new-login-security svg {
+          flex: 0 0 auto;
+          color: #5a8f7b;
+        }
+
+        .new-login-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          display: grid;
+          place-items: center;
+          padding: 20px;
+          background: rgba(8, 24, 20, 0.58);
+          backdrop-filter: blur(8px);
+        }
+
+        .new-login-modal {
+          width: min(430px, 100%);
+          overflow: hidden;
+          border: 1px solid #d9e6e0;
+          border-radius: 24px;
+          background: #ffffff;
+          box-shadow: 0 28px 80px rgba(8, 38, 29, 0.28);
+          color: var(--text);
+        }
+
+        .new-login-modal-top {
+          padding: 26px 26px 18px;
+          text-align: center;
+        }
+
+        .new-login-modal-icon {
+          width: 58px;
+          height: 58px;
+          display: grid;
+          place-items: center;
+          margin: 0 auto 16px;
+          border: 1px solid #f1cfd4;
+          border-radius: 18px;
+          background: #fff2f3;
+          color: #a62f3d;
+        }
+
+        .new-login-modal h3 {
+          margin: 0;
+          font-size: 23px;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+        }
+
+        .new-login-modal p {
+          margin: 11px 0 0;
+          color: #71827b;
+          font-size: 13px;
+          line-height: 1.65;
+        }
+
+        .new-login-modal-actions {
+          padding: 0 26px 26px;
+        }
+
+        .new-login-modal-button {
+          width: 100%;
+          min-height: 48px;
+          border: 1px solid #176a50;
+          border-radius: 14px;
+          background: linear-gradient(145deg, #238561, #14694e);
+          color: #ffffff;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 850;
+          cursor: pointer;
+        }
+
+        .new-login-modal-button:hover {
+          filter: brightness(1.04);
+        }
+
+        @keyframes new-login-spin {
           to {
             transform: rotate(360deg);
           }
         }
 
-        @media (max-width: 560px) {
-          .login-page {
-            height: 100vh;
-            min-height: 100vh;
-            align-items: center;
-            padding: 10px;
-            overflow: hidden;
+        @media (max-width: 900px) {
+          .new-login-page {
+            padding: 18px;
           }
 
-          .login-card {
-            width: 100%;
-            max-height: calc(100vh - 20px);
-            border-radius: 22px;
+          .new-login-shell {
+            width: min(560px, 100%);
+            min-height: auto;
+            grid-template-columns: 1fr;
           }
 
-          .login-screen {
-            box-sizing: border-box;
-            padding: 20px 18px;
+          .new-login-visual {
+            min-height: auto;
+            padding: 28px;
           }
 
-          .login-brand-logo {
-            width: 42px;
-            height: 42px;
-            border-radius: 14px;
+          .new-login-hero {
+            margin: 34px 0 12px;
           }
 
-          .login-brand-text span {
+          .new-login-hero h1 {
+            max-width: 420px;
+            font-size: 42px;
+          }
+
+          .new-login-hero > p {
+            max-width: 430px;
+          }
+
+          .new-login-features {
             display: none;
           }
 
-          .welcome-content {
-            padding: 22px 0 18px;
+          .new-login-visual-footer {
+            display: none;
           }
 
-          .welcome-icon {
-            width: 62px;
-            height: 62px;
-            margin-bottom: 14px;
-            border-radius: 21px;
-          }
-
-          .welcome-content h1 {
-            font-size: 34px;
-          }
-
-          .login-form-heading h1 {
-            font-size: 27px;
-          }
-
-          .login-form-heading p {
-            font-size: 12px;
+          .new-login-panel {
+            padding: 38px 30px;
           }
         }
 
-        @media (max-height: 760px) {
-          .login-page {
+        @media (max-width: 560px) {
+          .new-login-page {
+            min-height: 100dvh;
             padding: 10px;
           }
 
-          .login-card {
-            max-height: calc(100vh - 20px);
+          .new-login-shell {
+            border-radius: 24px;
           }
 
-          .login-screen {
-            padding: 18px 28px;
+          .new-login-visual {
+            padding: 22px 20px;
           }
 
-          .login-brand-logo {
-            width: 42px;
-            height: 42px;
-          }
-
-          .login-back-button {
-            margin-bottom: 8px;
-          }
-
-          .login-heading-icon {
+          .new-login-brand-logo {
             width: 46px;
             height: 46px;
-            margin-bottom: 7px;
+            flex-basis: 46px;
+            border-radius: 14px;
           }
 
-          .login-form-heading {
-            margin-bottom: 13px;
+          .new-login-brand-copy strong {
+            font-size: 16px;
           }
 
-          .login-form-heading h1 {
-            font-size: 27px;
+          .new-login-brand-copy span {
+            display: none;
           }
 
-          .login-form-heading p {
-            margin-top: 4px;
-            line-height: 1.45;
+          .new-login-hero {
+            margin: 24px 0 4px;
           }
 
-          .login-form {
-            gap: 9px;
+          .new-login-kicker {
+            min-height: 30px;
+            font-size: 9px;
           }
 
-          .login-input-wrap {
-            min-height: 44px;
+          .new-login-hero h1 {
+            margin: 14px 0 10px;
+            font-size: 34px;
           }
 
-          .primary-button {
-            min-height: 46px;
+          .new-login-hero > p {
+            font-size: 12px;
+            line-height: 1.55;
           }
 
-          .login-security-note {
-            margin-top: 9px;
-            padding-top: 9px;
+          .new-login-panel {
+            padding: 28px 20px 24px;
           }
 
-          .welcome-content {
-            padding: 18px 0 14px;
+          .new-login-form-icon {
+            display: none;
           }
 
-          .welcome-status {
-            margin-top: 16px;
+          .new-login-form-head {
+            margin-bottom: 22px;
+          }
+
+          .new-login-form-head h2 {
+            font-size: 28px;
+          }
+
+          .new-login-options {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+        }
+
+        @media (max-height: 760px) and (min-width: 901px) {
+          .new-login-page {
+            padding: 14px;
+          }
+
+          .new-login-shell {
+            min-height: 620px;
+          }
+
+          .new-login-visual {
+            min-height: 620px;
+            padding: 32px 38px;
+          }
+
+          .new-login-hero {
+            margin: 30px 0;
+          }
+
+          .new-login-hero h1 {
+            font-size: 50px;
+          }
+
+          .new-login-panel {
+            padding-block: 30px;
+          }
+
+          .new-login-form-head {
+            margin-bottom: 22px;
           }
         }
       `}</style>
 
-      <section className="login-card">
+      {suspendedModalOpen && (
         <div
-          className={`login-screen ${
-            screenVisible ? "" : "is-hidden"
-          }`}
+          className="new-login-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSuspendedModalOpen(false);
+            }
+          }}
         >
-          <div className="login-brand">
-            <div className="login-brand-logo">
-              <House size={23} strokeWidth={2.2} />
+          <section
+            className="new-login-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="suspended-account-title"
+          >
+            <div className="new-login-modal-top">
+              <div className="new-login-modal-icon">
+                <LockKeyhole size={27} strokeWidth={2} />
+              </div>
+
+              <h3 id="suspended-account-title">
+                Profil je dočasně pozastaven
+              </h3>
+
+              <p>
+                K tomuto účtu je momentálně zablokovaný přístup do aplikace.
+                Pro obnovení přístupu kontaktujte správce systému.
+              </p>
             </div>
 
-            <div className="login-brand-text">
+            <div className="new-login-modal-actions">
+              <button
+                type="button"
+                className="new-login-modal-button"
+                onClick={() => setSuspendedModalOpen(false)}
+              >
+                Rozumím
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      <section className="new-login-shell">
+        <aside className="new-login-visual">
+          <div className="new-login-brand">
+            <div className="new-login-brand-logo">
+              <Building2 size={25} strokeWidth={2} />
+            </div>
+
+            <div className="new-login-brand-copy">
               <strong>Správa domů</strong>
-              <span>Moderní systém pro správu nemovitostí</span>
+              <span>Interní systém správy nemovitostí</span>
             </div>
           </div>
 
-          {screen === "welcome" ? (
-            <>
-              <div className="welcome-content">
-                <div className="welcome-icon">
-                  <Building2 size={39} strokeWidth={1.8} />
-                </div>
+          <div className="new-login-hero">
+            <div className="new-login-kicker">
+              <Sparkles size={14} />
+              Jeden systém. Celý dům.
+            </div>
 
-                <span className="login-eyebrow">
-                  <ShieldCheck size={14} />
-                  Vítejte v aplikaci
+            <h1>Všechno důležité na jednom místě.</h1>
+
+            <p>
+              Přehled domů, bytů, uživatelů, financí, oprav, dokumentů,
+              zabezpečení i komunikace v jednom přehledném prostředí.
+            </p>
+
+            <div className="new-login-features">
+              <div className="new-login-feature">
+                <span>
+                  <CheckCircle2 size={16} />
                 </span>
+                <span>Přístup řízený uživatelskými oprávněními</span>
+              </div>
 
-                <h1>Správa domů</h1>
+              <div className="new-login-feature">
+                <span>
+                  <ShieldCheck size={16} />
+                </span>
+                <span>Bezpečné přihlášení přes Supabase Auth</span>
+              </div>
 
-                <p>
-                  Přehledné a bezpečné prostředí pro správu domů,
-                  bytů, nájemníků, financí, oprav a dokumentů.
-                </p>
+              <div className="new-login-feature">
+                <span>
+                  <Building2 size={16} />
+                </span>
+                <span>Správa více domů z jednoho účtu</span>
+              </div>
+            </div>
+          </div>
 
-                <div className="welcome-status">
-                  <div className="welcome-status-header">
-                    <div className="welcome-status-copy">
-                      <LoaderCircle size={16} />
-                      <span>{initializationText}</span>
-                    </div>
+          <div className="new-login-visual-footer">
+            <ShieldCheck size={14} />
+            Zabezpečená interní aplikace Správa domů
+          </div>
+        </aside>
 
-                    <span className="welcome-countdown">
-                      {secondsLeft} s
-                    </span>
-                  </div>
+        <section className="new-login-panel">
+          <div className="new-login-form-wrap">
+            <header className="new-login-form-head">
+              <div className="new-login-form-icon">
+                <LockKeyhole size={24} strokeWidth={1.9} />
+              </div>
 
-                  <div className="welcome-progress-track">
-                    <div
-                      className="welcome-progress-bar"
-                      style={{
-                        width: `${Math.min(
-                          Math.max(progress, 0),
-                          100
-                        )}%`,
-                      }}
-                    />
-                  </div>
+              <span>Přístup do aplikace</span>
+              <h2>Přihlášení</h2>
+
+              <p>
+                Zadejte přihlašovací údaje ke svému účtu a pokračujte do
+                systému.
+              </p>
+            </header>
+
+            <form className="new-login-form" onSubmit={handleSubmit}>
+              <div className="new-login-field">
+                <label htmlFor="new-login-email">E-mailová adresa</label>
+
+                <div className="new-login-input">
+                  <Mail size={19} strokeWidth={2} />
+
+                  <input
+                    id="new-login-email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      clearMessages();
+                    }}
+                    placeholder="vas@email.cz"
+                    autoComplete="email"
+                    spellCheck="false"
+                    disabled={loading || forgotPasswordLoading}
+                    required
+                  />
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="primary-button"
-                onClick={openLogin}
-              >
-                Pokračovat k přihlášení
-                <ArrowRight size={18} />
-              </button>
+              <div className="new-login-field">
+                <label htmlFor="new-login-password">Heslo</label>
 
-              <p className="welcome-footer">
-                Přihlašovací obrazovka se otevře automaticky.
-              </p>
-            </>
-          ) : (
-            <div className="login-form-screen">
-              <button
-                type="button"
-                className="login-back-button"
-                onClick={openWelcome}
-                disabled={loading || forgotPasswordLoading}
-              >
-                <ArrowLeft size={16} />
-                Zpět na úvod
-              </button>
+                <div className="new-login-input">
+                  <KeyRound size={19} strokeWidth={2} />
 
-              <header className="login-form-heading">
-                <div className="login-heading-icon">
-                  <LockKeyhole size={28} strokeWidth={1.9} />
-                </div>
+                  <input
+                    id="new-login-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      clearMessages();
+                    }}
+                    placeholder="Zadejte své heslo"
+                    autoComplete="current-password"
+                    disabled={loading || forgotPasswordLoading}
+                    required
+                  />
 
-                <span>Zabezpečený přístup</span>
-                <h1>Přihlášení</h1>
-
-                <p>
-                  Zadejte přihlašovací údaje přiřazené k vašemu
-                  uživatelskému účtu.
-                </p>
-              </header>
-
-              <form className="login-form" onSubmit={handleSubmit}>
-                <div className="login-field">
-                  <label htmlFor="login-email">
-                    E-mailová adresa
-                  </label>
-
-                  <div className="login-input-wrap">
-                    <Mail
-                      className="login-input-icon"
-                      size={19}
-                      strokeWidth={2}
-                    />
-
-                    <input
-                      id="login-email"
-                      type="email"
-                      value={email}
-                      onChange={(event) => {
-                        setEmail(event.target.value);
-
-                        if (errorMessage) {
-                          setErrorMessage("");
-                        }
-
-                        if (infoMessage) {
-                          setInfoMessage("");
-                        }
-                      }}
-                      placeholder="např. martin@email.cz"
-                      autoComplete="email"
-                      spellCheck="false"
-                      disabled={loading || forgotPasswordLoading}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="login-field">
-                  <label htmlFor="login-password">Heslo</label>
-
-                  <div className="login-input-wrap">
-                    <LockKeyhole
-                      className="login-input-icon"
-                      size={19}
-                      strokeWidth={2}
-                    />
-
-                    <input
-                      id="login-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(event) => {
-                        setPassword(event.target.value);
-
-                        if (errorMessage) {
-                          setErrorMessage("");
-                        }
-
-                        if (infoMessage) {
-                          setInfoMessage("");
-                        }
-                      }}
-                      placeholder="Zadejte své heslo"
-                      autoComplete="current-password"
-                      disabled={loading || forgotPasswordLoading}
-                      required
-                    />
-
-                    <button
-                      type="button"
-                      className="login-password-toggle"
-                      onClick={() =>
-                        setShowPassword((currentValue) => !currentValue)
-                      }
-                      aria-label={
-                        showPassword ? "Skrýt heslo" : "Zobrazit heslo"
-                      }
-                      title={
-                        showPassword ? "Skrýt heslo" : "Zobrazit heslo"
-                      }
-                      disabled={loading || forgotPasswordLoading}
-                    >
-                      {showPassword ? (
-                        <EyeOff size={18} strokeWidth={2} />
-                      ) : (
-                        <Eye size={18} strokeWidth={2} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="login-remember-row">
-                  <label className="login-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(event) =>
-                        setRememberMe(event.target.checked)
-                      }
-                      disabled={loading || forgotPasswordLoading}
-                    />
-
-                    <span>Zapamatovat přihlášení</span>
-                  </label>
-                </div>
-
-                {errorMessage && (
-                  <p
-                    className="login-message login-error"
-                    role="alert"
+                  <button
+                    type="button"
+                    className="new-login-password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={showPassword ? "Skrýt heslo" : "Zobrazit heslo"}
+                    title={showPassword ? "Skrýt heslo" : "Zobrazit heslo"}
+                    disabled={loading || forgotPasswordLoading}
                   >
-                    {errorMessage}
-                  </p>
-                )}
+                    {showPassword ? (
+                      <EyeOff size={18} strokeWidth={2} />
+                    ) : (
+                      <Eye size={18} strokeWidth={2} />
+                    )}
+                  </button>
+                </div>
+              </div>
 
-                {infoMessage && (
-                  <p
-                    className="login-message login-info"
-                    role="status"
-                  >
-                    {infoMessage}
-                  </p>
-                )}
-
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={loading || forgotPasswordLoading}
-                >
-                  {loading ? (
-                    <>
-                      <span className="login-spinner" />
-                      Přihlašuji…
-                    </>
-                  ) : (
-                    "Přihlásit se"
-                  )}
-                </button>
+              <div className="new-login-options">
+                <label className="new-login-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) =>
+                      setRememberMe(event.target.checked)
+                    }
+                    disabled={loading || forgotPasswordLoading}
+                  />
+                  <span>Zapamatovat přihlášení</span>
+                </label>
 
                 <button
                   type="button"
-                  className="forgot-password-button"
+                  className="new-login-forgot"
                   onClick={handleForgotPassword}
                   disabled={loading || forgotPasswordLoading}
                 >
                   {forgotPasswordLoading
-                    ? "Odesílám odkaz…"
+                    ? "Odesílám…"
                     : "Zapomenuté heslo"}
                 </button>
-              </form>
+              </div>
 
-              <p className="login-security-note">
-                <ShieldCheck size={15} strokeWidth={2} />
-                Přihlášení je bezpečně ověřováno prostřednictvím
-                Supabase Auth.
-              </p>
-            </div>
-          )}
-        </div>
+              {errorMessage && (
+                <p className="new-login-message error" role="alert">
+                  {errorMessage}
+                </p>
+              )}
+
+              {infoMessage && (
+                <p className="new-login-message info" role="status">
+                  {infoMessage}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className="new-login-submit"
+                disabled={loading || forgotPasswordLoading}
+              >
+                {loading ? (
+                  <>
+                    <span className="new-login-spinner" />
+                    Přihlašuji…
+                  </>
+                ) : (
+                  <>
+                    <LockKeyhole size={17} />
+                    Přihlásit se
+                  </>
+                )}
+              </button>
+            </form>
+
+            <p className="new-login-security">
+              <ShieldCheck size={15} />
+              Přihlášení je ověřováno prostřednictvím Supabase Auth.
+            </p>
+          </div>
+        </section>
       </section>
     </main>
   );

@@ -68,6 +68,47 @@ function findSupportedMode(supportedModes, candidates) {
     candidates.find((candidate) => supportedModes.includes(candidate)) || null
   );
 }
+
+async function getEdgeFunctionErrorMessage(error, fallback) {
+  try {
+    const response = error?.context;
+
+    if (response && typeof response.clone === "function") {
+      const clone = response.clone();
+      const contentType = clone.headers?.get?.("content-type") || "";
+
+      if (contentType.includes("application/json")) {
+        const payload = await clone.json();
+
+        if (payload?.error) {
+          return payload?.stage
+            ? `${payload.error} (část: ${payload.stage})`
+            : payload.error;
+        }
+
+        if (payload?.message) {
+          return payload.message;
+        }
+      } else {
+        const text = await clone.text();
+        if (text?.trim()) return text.trim();
+      }
+    }
+  } catch (parseError) {
+    console.warn("Chybu Edge Function se nepodařilo rozbalit:", parseError);
+  }
+
+  const message = String(error?.message || "").trim();
+
+  if (
+    message === "Edge Function returned a non-2xx status code" ||
+    message.includes("non-2xx")
+  ) {
+    return `${fallback} Edge Function vrátila chybu serveru. Zkontrolujte prosím Supabase Edge Function „tuya-api“ a její Secrets.`;
+  }
+
+  return message || fallback;
+}
 export default function Security({ selectedHouseId }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,9 +164,10 @@ export default function Security({ selectedHouseId }) {
       console.error("Načtení zabezpečení selhalo:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Nepodařilo se načíst zabezpečení domu."
+        await getEdgeFunctionErrorMessage(
+          err,
+          "Nepodařilo se načíst zabezpečení domu."
+        )
       );
     } finally {
       setLoading(false);
@@ -167,9 +209,10 @@ export default function Security({ selectedHouseId }) {
       console.error("Změna režimu alarmu selhala:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Nepodařilo se změnit režim alarmu."
+        await getEdgeFunctionErrorMessage(
+          err,
+          "Nepodařilo se změnit režim alarmu."
+        )
       );
     } finally {
       setChangingMode("");

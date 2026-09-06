@@ -6,11 +6,10 @@ import {
   CircleAlert,
   DoorOpen,
   Edit3,
-  Eye,
-  EyeOff,
   Home,
-  KeyRound,
+  Image,
   LoaderCircle,
+  LogOut,
   MapPin,
   Plus,
   RefreshCw,
@@ -18,29 +17,13 @@ import {
   Search,
   ShieldCheck,
   Trash2,
-  UserCog,
   Users,
   X,
 } from "lucide-react";
-import {
-  isDeveloperPreviewMode,
-  supabase,
-} from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 
 const HOUSES_TABLE = "houses";
-const PROFILES_TABLE = "profiles";
-const HOUSE_ACCESS_TABLE = "house_user_access";
 const SELECTED_HOUSE_STORAGE_KEY = "selected_house_id";
-
-const ADMIN_ROLES = [
-  "owner",
-  "admin",
-  "manager",
-  "majitel",
-  "správce",
-  "administrator",
-  "administrátor",
-];
 
 const EMPTY_HOUSE = {
   id: null,
@@ -68,14 +51,6 @@ function normalizeNumber(value) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
 }
 
-function normalizeRole(role) {
-  return String(role || "").trim().toLowerCase();
-}
-
-function hasAdminRole(role) {
-  return ADMIN_ROLES.includes(normalizeRole(role));
-}
-
 function getFullAddress(house) {
   const streetPart = [house.street, house.house_number]
     .filter(Boolean)
@@ -100,19 +75,14 @@ function getHouseInitials(name) {
   return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
 }
 
-function getUserLabel(user) {
-  return user.full_name || user.username || "Neznámý uživatel";
-}
-
 export default function Houses({
+  session,
   onHouseSelected,
   onOpenHouse,
   onOpenHouseSettings,
+  onLogout,
 }) {
   const [houses, setHouses] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentProfile, setCurrentProfile] = useState(null);
-
   const [selectedHouseId, setSelectedHouseId] = useState(
     () => localStorage.getItem(SELECTED_HOUSE_STORAGE_KEY) || ""
   );
@@ -129,22 +99,8 @@ export default function Houses({
   const [editingHouse, setEditingHouse] = useState(EMPTY_HOUSE);
   const [deleteConfirmHouse, setDeleteConfirmHouse] = useState(null);
 
-  const [accessModalHouse, setAccessModalHouse] = useState(null);
-  const [accessUsers, setAccessUsers] = useState([]);
-  const [accessMap, setAccessMap] = useState({});
-  const [loadingAccess, setLoadingAccess] = useState(false);
-  const [savingAccess, setSavingAccess] = useState(false);
-  const [accessSearch, setAccessSearch] = useState("");
-
   const [pageError, setPageError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-
-  const isSandbox = isDeveloperPreviewMode();
-
-  const isAdministrator = useMemo(
-    () => isSandbox || hasAdminRole(currentProfile?.role),
-    [currentProfile, isSandbox]
-  );
 
   const filteredHouses = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -175,25 +131,6 @@ export default function Houses({
     });
   }, [houses, search, statusFilter]);
 
-  const filteredAccessUsers = useMemo(() => {
-    const query = accessSearch.trim().toLowerCase();
-
-    if (!query) return accessUsers;
-
-    return accessUsers.filter((user) => {
-      const haystack = [
-        user.full_name,
-        user.username,
-        user.role,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(query);
-    });
-  }, [accessUsers, accessSearch]);
-
   const statistics = useMemo(() => {
     return {
       total: houses.length,
@@ -211,24 +148,6 @@ export default function Houses({
 
   useEffect(() => {
     loadHouses();
-
-    function handleSandboxDataChanged() {
-      if (isDeveloperPreviewMode()) {
-        loadHouses({ silent: true });
-      }
-    }
-
-    window.addEventListener(
-      "developer-sandbox-data-changed",
-      handleSandboxDataChanged
-    );
-
-    return () => {
-      window.removeEventListener(
-        "developer-sandbox-data-changed",
-        handleSandboxDataChanged
-      );
-    };
   }, []);
 
   useEffect(() => {
@@ -241,24 +160,24 @@ export default function Houses({
     return () => window.clearTimeout(timeout);
   }, [successMessage]);
 
-  async function getAuthenticatedContext() {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+  async function handleLogout() {
+    setPageError("");
 
-    if (userError) throw userError;
-    if (!user) throw new Error("Uživatel není přihlášen.");
+    try {
+      if (typeof onLogout === "function") {
+        await onLogout();
+        return;
+      }
 
-    const { data: profile, error: profileError } = await supabase
-      .from(PROFILES_TABLE)
-      .select("id, full_name, username, role, active")
-      .eq("id", user.id)
-      .single();
+      localStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
+      sessionStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
 
-    if (profileError) throw profileError;
-
-    return { user, profile };
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error("Odhlášení selhalo:", error);
+      setPageError(error?.message || "Odhlášení se nepodařilo.");
+    }
   }
 
   async function loadHouses({ silent = false } = {}) {
@@ -271,51 +190,14 @@ export default function Houses({
     setPageError("");
 
     try {
-      const { user, profile } = await getAuthenticatedContext();
+      const { data, error } = await supabase
+        .from(HOUSES_TABLE)
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      setCurrentUser(user);
-      setCurrentProfile(profile);
+      if (error) throw error;
 
-      let nextHouses = [];
-
-      if (isDeveloperPreviewMode() || hasAdminRole(profile.role)) {
-        const { data, error } = await supabase
-          .from(HOUSES_TABLE)
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-
-        nextHouses = data || [];
-      } else {
-        const { data, error } = await supabase
-          .from(HOUSE_ACCESS_TABLE)
-          .select(`
-            house_id,
-            can_view,
-            can_manage,
-            house:${HOUSES_TABLE} (*)
-          `)
-          .eq("user_id", user.id)
-          .eq("can_view", true);
-
-        if (error) throw error;
-
-        nextHouses = (data || [])
-          .map((row) => {
-            if (!row.house) return null;
-
-            return {
-              ...row.house,
-              access_can_manage: Boolean(row.can_manage),
-            };
-          })
-          .filter(Boolean)
-          .sort((a, b) =>
-            String(a.name || "").localeCompare(String(b.name || ""), "cs")
-          );
-      }
-
+      const nextHouses = data || [];
       setHouses(nextHouses);
 
       const storedHouseId =
@@ -323,19 +205,10 @@ export default function Houses({
 
       if (
         storedHouseId &&
-        !nextHouses.some((house) => String(house.id) === String(storedHouseId))
+        !nextHouses.some((house) => house.id === storedHouseId)
       ) {
         localStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
         setSelectedHouseId("");
-
-        window.dispatchEvent(
-          new CustomEvent("selected-house-changed", {
-            detail: {
-              houseId: null,
-              house: null,
-            },
-          })
-        );
       }
     } catch (error) {
       console.error("Načtení domů selhalo:", error);
@@ -347,36 +220,24 @@ export default function Houses({
   }
 
   function openCreateModal() {
-    if (!isAdministrator) {
-      setPageError("Nemáte oprávnění vytvářet nové domy.");
-      return;
-    }
-
     setEditingHouse({ ...EMPTY_HOUSE });
     setPageError("");
     setModalOpen(true);
   }
 
   function openEditModal(house) {
-    if (!isAdministrator && !house.access_can_manage) {
-      setPageError("Nemáte oprávnění upravovat tento dům.");
-      return;
-    }
-
     setEditingHouse({
       ...EMPTY_HOUSE,
       ...house,
       units: house.units ?? "",
       tenants: house.tenants ?? "",
     });
-
     setPageError("");
     setModalOpen(true);
   }
 
   function closeModal() {
     if (saving) return;
-
     setModalOpen(false);
     setEditingHouse({ ...EMPTY_HOUSE });
   }
@@ -386,7 +247,6 @@ export default function Houses({
       ...current,
       [field]: value,
     }));
-
     setPageError("");
   }
 
@@ -395,15 +255,10 @@ export default function Houses({
 
     if (saving) return;
 
-    if (!isAdministrator && !editingHouse.access_can_manage) {
-      setPageError("Nemáte oprávnění uložit změny tohoto domu.");
-      return;
-    }
-
     const name = editingHouse.name.trim();
 
     if (!name) {
-      setPageError("Vyplňte název domu.");
+      setPageError("Vyplň název domu.");
       return;
     }
 
@@ -411,7 +266,13 @@ export default function Houses({
     setPageError("");
 
     try {
-      const user = currentUser || (await getAuthenticatedContext()).user;
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+      if (!user) throw new Error("Nepodařilo se zjistit přihlášeného uživatele.");
 
       const payload = {
         name,
@@ -419,11 +280,12 @@ export default function Houses({
         house_number: editingHouse.house_number.trim(),
         zip_code: editingHouse.zip_code.trim(),
         city: editingHouse.city.trim(),
-        country: editingHouse.country.trim() || "Česká republika",
+        country:
+          editingHouse.country.trim() || "Česká republika",
         units: normalizeNumber(editingHouse.units),
         tenants: normalizeNumber(editingHouse.tenants),
         manager_name: editingHouse.manager_name.trim(),
-        description: String(editingHouse.description ?? "").trim(),
+        description: editingHouse.description.trim(),
         image_url: editingHouse.image_url.trim(),
         active: Boolean(editingHouse.active),
         updated_at: new Date().toISOString(),
@@ -454,7 +316,7 @@ export default function Houses({
       setHouses((current) => {
         if (editingHouse.id) {
           return current.map((house) =>
-            String(house.id) === String(result.data.id) ? result.data : house
+            house.id === result.data.id ? result.data : house
           );
         }
 
@@ -523,11 +385,6 @@ export default function Houses({
   }
 
   function handleOpenSettings(house) {
-    if (!isAdministrator && !house.access_can_manage) {
-      setPageError("Nemáte oprávnění spravovat nastavení tohoto domu.");
-      return;
-    }
-
     selectHouse(house, false);
 
     if (typeof onOpenHouseSettings === "function") {
@@ -548,11 +405,6 @@ export default function Houses({
   async function deleteHouse() {
     if (!deleteConfirmHouse || deletingHouseId) return;
 
-    if (!isAdministrator) {
-      setPageError("Nemáte oprávnění odstranit dům.");
-      return;
-    }
-
     setDeletingHouseId(deleteConfirmHouse.id);
     setPageError("");
 
@@ -565,10 +417,10 @@ export default function Houses({
       if (error) throw error;
 
       setHouses((current) =>
-        current.filter((house) => String(house.id) !== String(deleteConfirmHouse.id))
+        current.filter((house) => house.id !== deleteConfirmHouse.id)
       );
 
-      if (String(selectedHouseId) === String(deleteConfirmHouse.id)) {
+      if (selectedHouseId === deleteConfirmHouse.id) {
         localStorage.removeItem(SELECTED_HOUSE_STORAGE_KEY);
         setSelectedHouseId("");
 
@@ -593,11 +445,6 @@ export default function Houses({
   }
 
   async function toggleHouseActive(house) {
-    if (!isAdministrator && !house.access_can_manage) {
-      setPageError("Nemáte oprávnění měnit stav tohoto domu.");
-      return;
-    }
-
     setPageError("");
 
     try {
@@ -614,7 +461,7 @@ export default function Houses({
       if (error) throw error;
 
       setHouses((current) =>
-        current.map((item) => (String(item.id) === String(data.id) ? data : item))
+        current.map((item) => (item.id === data.id ? data : item))
       );
 
       setSuccessMessage(
@@ -625,129 +472,6 @@ export default function Houses({
     } catch (error) {
       console.error("Změna stavu domu selhala:", error);
       setPageError(error?.message || "Stav domu se nepodařilo změnit.");
-    }
-  }
-
-  async function openAccessModal(house) {
-    if (!isAdministrator) {
-      setPageError("Nemáte oprávnění spravovat přístup uživatelů.");
-      return;
-    }
-
-    setAccessModalHouse(house);
-    setAccessSearch("");
-    setLoadingAccess(true);
-    setPageError("");
-
-    try {
-      const [usersResult, accessResult] = await Promise.all([
-        supabase
-          .from(PROFILES_TABLE)
-          .select("id, full_name, username, role, active")
-          .neq("id", currentUser?.id || "")
-          .order("full_name", { ascending: true }),
-
-        supabase
-          .from(HOUSE_ACCESS_TABLE)
-          .select("user_id, can_view, can_manage")
-          .eq("house_id", house.id),
-      ]);
-
-      if (usersResult.error) throw usersResult.error;
-      if (accessResult.error) throw accessResult.error;
-
-      const users = (usersResult.data || []).filter(
-        (user) => user.active !== false
-      );
-
-      const nextAccessMap = {};
-
-      for (const user of users) {
-        nextAccessMap[user.id] = {
-          can_view: false,
-          can_manage: false,
-        };
-      }
-
-      for (const row of accessResult.data || []) {
-        nextAccessMap[row.user_id] = {
-          can_view: Boolean(row.can_view),
-          can_manage: Boolean(row.can_manage),
-        };
-      }
-
-      setAccessUsers(users);
-      setAccessMap(nextAccessMap);
-    } catch (error) {
-      console.error("Načtení přístupů selhalo:", error);
-      setPageError(
-        error?.message || "Přístupy uživatelů se nepodařilo načíst."
-      );
-      setAccessModalHouse(null);
-    } finally {
-      setLoadingAccess(false);
-    }
-  }
-
-  function updateAccess(userId, field, value) {
-    setAccessMap((current) => {
-      const next = {
-        ...current,
-        [userId]: {
-          can_view: Boolean(current[userId]?.can_view),
-          can_manage: Boolean(current[userId]?.can_manage),
-          [field]: value,
-        },
-      };
-
-      if (field === "can_view" && !value) {
-        next[userId].can_manage = false;
-      }
-
-      if (field === "can_manage" && value) {
-        next[userId].can_view = true;
-      }
-
-      return next;
-    });
-  }
-
-  async function saveHouseAccess() {
-    if (!accessModalHouse || savingAccess) return;
-
-    setSavingAccess(true);
-    setPageError("");
-
-    try {
-      const rows = accessUsers.map((user) => ({
-        house_id: accessModalHouse.id,
-        user_id: user.id,
-        can_view: Boolean(accessMap[user.id]?.can_view),
-        can_manage: Boolean(accessMap[user.id]?.can_manage),
-        updated_at: new Date().toISOString(),
-      }));
-
-      const { error } = await supabase
-        .from(HOUSE_ACCESS_TABLE)
-        .upsert(rows, {
-          onConflict: "house_id,user_id",
-        });
-
-      if (error) throw error;
-
-      setSuccessMessage(
-        `Přístupy k domu „${accessModalHouse.name}“ byly uloženy.`
-      );
-      setAccessModalHouse(null);
-      setAccessUsers([]);
-      setAccessMap({});
-    } catch (error) {
-      console.error("Uložení přístupů selhalo:", error);
-      setPageError(
-        error?.message || "Přístupy uživatelů se nepodařilo uložit."
-      );
-    } finally {
-      setSavingAccess(false);
     }
   }
 
@@ -763,6 +487,31 @@ export default function Houses({
         .houses-page * {
           box-sizing: border-box;
         }
+
+        .houses-logout-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 42px;
+          padding: 0 15px;
+          border: 1px solid rgba(239, 68, 68, 0.28);
+          border-radius: 12px;
+          background: rgba(127, 29, 29, 0.18);
+          color: #fecaca;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+        }
+
+        .houses-logout-button:hover {
+          background: rgba(185, 28, 28, 0.28);
+          border-color: rgba(248, 113, 113, 0.5);
+          transform: translateY(-1px);
+        }
+
 
         .houses-header {
           display: flex;
@@ -1157,7 +906,7 @@ export default function Houses({
 
         .house-card-actions {
           display: grid;
-          grid-template-columns: 1fr auto auto auto;
+          grid-template-columns: 1fr auto auto;
           gap: 8px;
           margin-top: 15px;
         }
@@ -1292,10 +1041,6 @@ export default function Houses({
           box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
         }
 
-        .houses-modal.access {
-          width: min(900px, 100%);
-        }
-
         .houses-modal-header {
           position: sticky;
           top: 0;
@@ -1388,6 +1133,13 @@ export default function Houses({
           resize: vertical;
         }
 
+        .houses-field input:focus,
+        .houses-field textarea:focus,
+        .houses-field select:focus {
+          border-color: rgba(52, 211, 153, 0.38);
+          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.07);
+        }
+
         .houses-switch-row {
           min-height: 62px;
           display: flex;
@@ -1463,104 +1215,6 @@ export default function Houses({
           border-top: 1px solid rgba(148, 163, 184, 0.09);
         }
 
-        .houses-access-content {
-          padding: 20px;
-        }
-
-        .houses-access-search {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-height: 43px;
-          margin-bottom: 14px;
-          padding: 0 13px;
-          border: 1px solid rgba(148, 163, 184, 0.13);
-          border-radius: 13px;
-          background: rgba(15, 23, 42, 0.64);
-          color: #64748b;
-        }
-
-        .houses-access-search input {
-          width: 100%;
-          border: 0;
-          outline: 0;
-          background: transparent;
-          color: #eef4fb;
-          font: inherit;
-          font-size: 12px;
-        }
-
-        .houses-access-list {
-          overflow: hidden;
-          border: 1px solid rgba(148, 163, 184, 0.1);
-          border-radius: 15px;
-        }
-
-        .houses-access-row {
-          display: grid;
-          grid-template-columns: minmax(220px, 1fr) 130px 130px;
-          align-items: center;
-          gap: 10px;
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-        }
-
-        .houses-access-row:last-child {
-          border-bottom: 0;
-        }
-
-        .houses-access-user {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .houses-access-avatar {
-          width: 38px;
-          height: 38px;
-          display: grid;
-          place-items: center;
-          flex: 0 0 auto;
-          border-radius: 12px;
-          background: rgba(16, 185, 129, 0.1);
-          color: #a7f3d0;
-          font-size: 11px;
-          font-weight: 900;
-        }
-
-        .houses-access-user strong {
-          display: block;
-          overflow: hidden;
-          color: #e2e8f0;
-          font-size: 12px;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .houses-access-user span {
-          display: block;
-          margin-top: 3px;
-          color: #718399;
-          font-size: 10px;
-        }
-
-        .houses-access-control {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          color: #94a3b8;
-          font-size: 10px;
-        }
-
-        .houses-access-empty {
-          padding: 28px;
-          color: #718399;
-          font-size: 12px;
-          text-align: center;
-        }
-
         .houses-confirm-modal {
           width: min(460px, 100%);
           padding: 22px;
@@ -1633,10 +1287,6 @@ export default function Houses({
           .houses-filter {
             width: 100%;
           }
-
-          .houses-access-row {
-            grid-template-columns: 1fr 110px 110px;
-          }
         }
 
         @media (max-width: 650px) {
@@ -1663,15 +1313,7 @@ export default function Houses({
           }
 
           .house-card-actions {
-            grid-template-columns: 1fr auto auto auto;
-          }
-
-          .houses-access-row {
-            grid-template-columns: 1fr;
-          }
-
-          .houses-access-control {
-            justify-content: space-between;
+            grid-template-columns: 1fr auto auto;
           }
         }
 
@@ -1697,13 +1339,25 @@ export default function Houses({
         }
       `}</style>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "-8px" }}>
+        <button
+          type="button"
+          className="houses-logout-button"
+          onClick={handleLogout}
+          title="Odhlásit se z aplikace"
+        >
+          <LogOut size={17} />
+          Odhlásit se
+        </button>
+      </div>
+
       <header className="houses-header">
         <div className="houses-title">
           <span>Správa nemovitostí</span>
           <h1>Vyberte dům</h1>
           <p>
-            Po přihlášení nejprve vyberte dům, se kterým chcete pracovat.
-            Každý uživatel uvidí pouze domy, ke kterým má přidělený přístup.
+            Po přihlášení nejprve vyberte dům, se kterým chcete pracovat,
+            nebo vytvořte novou nemovitost.
           </p>
         </div>
 
@@ -1721,16 +1375,14 @@ export default function Houses({
             {refreshing ? "Obnovuji…" : "Obnovit"}
           </button>
 
-          {isAdministrator && (
-            <button
-              type="button"
-              className="houses-button primary"
-              onClick={openCreateModal}
-            >
-              <Plus size={18} />
-              Nový dům
-            </button>
-          )}
+          <button
+            type="button"
+            className="houses-button primary"
+            onClick={openCreateModal}
+          >
+            <Plus size={18} />
+            Nový dům
+          </button>
         </div>
       </header>
 
@@ -1755,7 +1407,7 @@ export default function Houses({
           </div>
           <div>
             <strong>{statistics.total}</strong>
-            <span>Dostupných domů</span>
+            <span>Celkem domů</span>
           </div>
         </article>
 
@@ -1799,7 +1451,6 @@ export default function Houses({
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Hledat podle názvu, adresy nebo správce…"
           />
-
           {search && (
             <button
               type="button"
@@ -1817,7 +1468,7 @@ export default function Houses({
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
         >
-          <option value="all">Všechny dostupné domy</option>
+          <option value="all">Všechny domy</option>
           <option value="active">Pouze aktivní</option>
           <option value="inactive">Pouze neaktivní</option>
         </select>
@@ -1827,7 +1478,7 @@ export default function Houses({
         <div className="houses-loading">
           <div className="houses-loading-inner">
             <LoaderCircle size={28} className="houses-spin" />
-            <strong>Načítám dostupné domy…</strong>
+            <strong>Načítám domy…</strong>
           </div>
         </div>
       ) : filteredHouses.length === 0 ? (
@@ -1839,21 +1490,17 @@ export default function Houses({
 
             <h2>
               {houses.length === 0
-                ? isAdministrator
-                  ? "Zatím tu není žádný dům"
-                  : "Nemáte přístup k žádnému domu"
+                ? "Zatím tu není žádný dům"
                 : "Žádný dům neodpovídá filtru"}
             </h2>
 
             <p>
               {houses.length === 0
-                ? isAdministrator
-                  ? "Vytvořte první dům a následně nastavte, kteří uživatelé ho mohou vidět nebo spravovat."
-                  : "Správce vám zatím nepřidělil přístup k žádnému domu."
+                ? "Vytvořte první dům. Po jeho uložení se automaticky nastaví jako aktuální a můžete pokračovat do aplikace."
                 : "Změňte hledaný výraz nebo nastavení filtru."}
             </p>
 
-            {houses.length === 0 && isAdministrator && (
+            {houses.length === 0 && (
               <button
                 type="button"
                 className="houses-button primary"
@@ -1868,10 +1515,8 @@ export default function Houses({
       ) : (
         <section className="houses-grid">
           {filteredHouses.map((house) => {
-            const isSelected = String(house.id) === String(selectedHouseId);
+            const isSelected = house.id === selectedHouseId;
             const isInactive = house.active === false;
-            const canManageHouse =
-              isAdministrator || house.access_can_manage;
 
             return (
               <article
@@ -1965,61 +1610,42 @@ export default function Houses({
                       <ChevronRight size={14} />
                     </button>
 
-                    {canManageHouse && (
-                      <button
-                        type="button"
-                        className="house-card-action icon-only"
-                        onClick={() => openEditModal(house)}
-                        title="Upravit dům"
-                      >
-                        <Edit3 size={15} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="house-card-action icon-only"
+                      onClick={() => openEditModal(house)}
+                      title="Upravit dům"
+                    >
+                      <Edit3 size={15} />
+                    </button>
 
-                    {canManageHouse && (
-                      <button
-                        type="button"
-                        className="house-card-action icon-only"
-                        onClick={() => handleOpenSettings(house)}
-                        title="Nastavení domu"
-                      >
-                        <ShieldCheck size={15} />
-                      </button>
-                    )}
-
-                    {isAdministrator && (
-                      <button
-                        type="button"
-                        className="house-card-action icon-only"
-                        onClick={() => openAccessModal(house)}
-                        title="Přístupy uživatelů k domu"
-                      >
-                        <UserCog size={15} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="house-card-action icon-only"
+                      onClick={() => handleOpenSettings(house)}
+                      title="Nastavení domu"
+                    >
+                      <ShieldCheck size={15} />
+                    </button>
                   </div>
 
-                  {canManageHouse && (
-                    <div className="house-card-footer-actions">
-                      <button
-                        type="button"
-                        className="house-link-action"
-                        onClick={() => toggleHouseActive(house)}
-                      >
-                        {isInactive ? "Aktivovat dům" : "Deaktivovat dům"}
-                      </button>
+                  <div className="house-card-footer-actions">
+                    <button
+                      type="button"
+                      className="house-link-action"
+                      onClick={() => toggleHouseActive(house)}
+                    >
+                      {isInactive ? "Aktivovat dům" : "Deaktivovat dům"}
+                    </button>
 
-                      {isAdministrator && (
-                        <button
-                          type="button"
-                          className="house-link-action danger"
-                          onClick={() => setDeleteConfirmHouse(house)}
-                        >
-                          Odstranit
-                        </button>
-                      )}
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      className="house-link-action danger"
+                      onClick={() => setDeleteConfirmHouse(house)}
+                    >
+                      Odstranit
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -2266,177 +1892,6 @@ export default function Houses({
         </div>
       )}
 
-      {accessModalHouse && (
-        <div
-          className="houses-modal-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (
-              event.target === event.currentTarget &&
-              !savingAccess
-            ) {
-              setAccessModalHouse(null);
-            }
-          }}
-        >
-          <div
-            className="houses-modal access"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="house-access-title"
-          >
-            <div className="houses-modal-header">
-              <div>
-                <span>Přístupy uživatelů</span>
-                <h2 id="house-access-title">
-                  {accessModalHouse.name}
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                className="houses-modal-close"
-                onClick={() => setAccessModalHouse(null)}
-                disabled={savingAccess}
-                aria-label="Zavřít"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="houses-access-content">
-              <div className="houses-access-search">
-                <Search size={16} />
-                <input
-                  type="search"
-                  value={accessSearch}
-                  onChange={(event) =>
-                    setAccessSearch(event.target.value)
-                  }
-                  placeholder="Hledat uživatele…"
-                />
-              </div>
-
-              {loadingAccess ? (
-                <div className="houses-loading" style={{ minHeight: 260 }}>
-                  <div className="houses-loading-inner">
-                    <LoaderCircle size={26} className="houses-spin" />
-                    <strong>Načítám uživatele a jejich přístupy…</strong>
-                  </div>
-                </div>
-              ) : filteredAccessUsers.length === 0 ? (
-                <div className="houses-access-empty">
-                  Nebyl nalezen žádný aktivní uživatel.
-                </div>
-              ) : (
-                <div className="houses-access-list">
-                  {filteredAccessUsers.map((user) => {
-                    const access = accessMap[user.id] || {
-                      can_view: false,
-                      can_manage: false,
-                    };
-
-                    return (
-                      <div className="houses-access-row" key={user.id}>
-                        <div className="houses-access-user">
-                          <div className="houses-access-avatar">
-                            {getHouseInitials(getUserLabel(user))}
-                          </div>
-
-                          <div>
-                            <strong>{getUserLabel(user)}</strong>
-                            <span>
-                              {user.role || "Bez role"}
-                              {user.username
-                                ? ` · @${user.username}`
-                                : ""}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="houses-access-control">
-                          {access.can_view ? (
-                            <Eye size={15} />
-                          ) : (
-                            <EyeOff size={15} />
-                          )}
-                          <span>Vidí dům</span>
-
-                          <label className="houses-switch">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(access.can_view)}
-                              onChange={(event) =>
-                                updateAccess(
-                                  user.id,
-                                  "can_view",
-                                  event.target.checked
-                                )
-                              }
-                            />
-                            <span className="houses-switch-slider" />
-                          </label>
-                        </div>
-
-                        <div className="houses-access-control">
-                          <KeyRound size={15} />
-                          <span>Spravuje</span>
-
-                          <label className="houses-switch">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(access.can_manage)}
-                              onChange={(event) =>
-                                updateAccess(
-                                  user.id,
-                                  "can_manage",
-                                  event.target.checked
-                                )
-                              }
-                            />
-                            <span className="houses-switch-slider" />
-                          </label>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="houses-modal-footer">
-                <button
-                  type="button"
-                  className="houses-button secondary"
-                  onClick={() => setAccessModalHouse(null)}
-                  disabled={savingAccess}
-                >
-                  Zrušit
-                </button>
-
-                <button
-                  type="button"
-                  className="houses-button primary"
-                  onClick={saveHouseAccess}
-                  disabled={savingAccess || loadingAccess}
-                >
-                  {savingAccess ? (
-                    <>
-                      <LoaderCircle size={17} className="houses-spin" />
-                      Ukládám…
-                    </>
-                  ) : (
-                    <>
-                      <Save size={17} />
-                      Uložit přístupy
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {deleteConfirmHouse && (
         <div
           className="houses-modal-backdrop"
@@ -2464,7 +1919,8 @@ export default function Houses({
             <p>
               Opravdu chcete odstranit dům{" "}
               <strong>„{deleteConfirmHouse.name}“</strong>? Tuto akci nelze
-              vrátit zpět.
+              vrátit zpět. Pokud jsou na dům navázaná další data, může
+              databáze odstranění zablokovat.
             </p>
 
             <div className="houses-confirm-actions">

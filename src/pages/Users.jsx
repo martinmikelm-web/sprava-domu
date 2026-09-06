@@ -447,8 +447,8 @@ export default function Users({
     });
   }
 
-  function closeModal() {
-    if (saving) return;
+  function closeModal(force = false) {
+    if (saving && !force) return;
     setSelectedUser(null);
     setIsCreating(false);
     setForm(EMPTY_FORM);
@@ -850,7 +850,7 @@ export default function Users({
           ? `Uživatel ${fullName} byl vytvořen.`
           : `Uživatel ${fullName} byl uložen.`
       );
-      closeModal();
+      closeModal(true);
       await loadData({ silent: true });
 
       window.dispatchEvent(
