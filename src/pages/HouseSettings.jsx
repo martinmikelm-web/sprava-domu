@@ -26,6 +26,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import HouseNotificationCenter from "../components/HouseNotificationCenter";
 import {
   GLOBAL_PERMISSION_MODULES,
   createPermissionMap,
@@ -1260,35 +1261,18 @@ export default function HouseSettings({
 
     if (activeSection === "notifications") {
       return (
-        <>
-          {renderHeading(
-            Bell,
-            "Notifikace",
-            "Způsob upozorňování",
-            "Nastav výchozí kanály pro systémová oznámení domu."
-          )}
-
-          <div className="house-switch-list">
-            {renderSwitch({
-              field: "email_notifications",
-              title: "E-mailové notifikace",
-              description:
-                "Odesílání důležitých oznámení a připomínek e-mailem.",
-            })}
-            {renderSwitch({
-              field: "push_notifications",
-              title: "Push notifikace",
-              description:
-                "Upozornění přímo v prohlížeči nebo mobilním zařízení.",
-            })}
-            {renderSwitch({
-              field: "sms_notifications",
-              title: "SMS notifikace",
-              description:
-                "Krátké textové zprávy pro urgentní události.",
-            })}
-          </div>
-        </>
+        <HouseNotificationCenter
+          houseId={settings.id}
+          houseName={settings.house_name}
+          canEdit={canEditHouse}
+          savingSettings={savingSettings}
+          emailNotifications={settings.email_notifications}
+          pushNotifications={settings.push_notifications}
+          smsNotifications={settings.sms_notifications}
+          onChangeHouseChannel={(field, value) => updateField(field, value)}
+          onMessage={(message) => setSuccessMessage(message)}
+          onError={(message) => setPageError(message)}
+        />
       );
     }
 
